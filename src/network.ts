@@ -1,0 +1,39 @@
+import type { Driver } from './driver.js';
+import type { ArtifactStore } from './artifact-store.js';
+
+interface Rec { url: string; status: number; type: string }
+
+export class Network {
+  private records: Rec[] = [];
+
+  constructor(private driver: Driver, private store: ArtifactStore) {}
+
+  start(): void {
+    this.driver.page().on('response', (res) => {
+      this.records.push({ url: res.url(), status: res.status(), type: res.request().resourceType() });
+    });
+  }
+
+  requests(filter?: string): Rec[] {
+    return filter ? this.records.filter((r) => r.url.includes(filter)) : this.records.slice();
+  }
+
+  async readResponse(match: string): Promise<{ path: string; summary: string } | null> {
+    // Bodies are not retained after load: refetch the matching URL within the page session.
+    const rec = this.records.find((r) => r.url.includes(match));
+    if (!rec) return null;
+    return this.fetchWithSession(rec.url);
+  }
+
+  async fetchWithSession(url: string): Promise<{ path: string; summary: string }> {
+    const b64 = await this.driver.evaluate(async (u: string) => {
+      const r = await fetch(u, { credentials: 'include' });
+      const buf = new Uint8Array(await r.arrayBuffer());
+      let s = ''; for (const byte of buf) s += String.fromCharCode(byte);
+      return btoa(s);
+    }, url);
+    const bytes = Buffer.from(b64, 'base64');
+    const ext = url.split('.').pop()?.slice(0, 5).replace(/[^a-z0-9]/gi, '') || 'bin';
+    return this.store.save('net', bytes, ext);
+  }
+}
