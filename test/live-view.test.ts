@@ -55,6 +55,21 @@ describe('LiveView (integration)', () => {
     await env.stop();
   });
 
+  it('cleans up the CDP session if the client disconnects during/right after attach (no leak)', async () => {
+    expect(live.sessionCount()).toBe(0);
+
+    const ws = new WebSocket(liveUrl());
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    ws.on('error', () => {}); // a reset during our own abrupt close is not a test failure
+    ws.close();
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(live.sessionCount()).toBe(0);
+  });
+
   it('streams at least one screencast frame to a client with a valid token', async () => {
     const ws = new WebSocket(liveUrl());
     await new Promise<void>((resolve, reject) => {

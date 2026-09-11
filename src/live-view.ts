@@ -37,11 +37,6 @@ export function verifyToken(secret: string, token: string): boolean {
   }
 }
 
-interface LiveSession {
-  ws: WebSocket;
-  cdp: CDPSession;
-}
-
 /**
  * Read-only live view: streams the driven page's screen over a token-gated
  * websocket via CDP's Page.startScreencast. No input handling here — that is
@@ -50,7 +45,7 @@ interface LiveSession {
 export class LiveView {
   private server: WebSocketServer | undefined;
   private port = 0;
-  private sessions = new Set<LiveSession>();
+  private sessions = new Map<WebSocket, CDPSession>();
 
   constructor(private driver: Driver, private opts: { secret: string }) {}
 
@@ -78,7 +73,23 @@ export class LiveView {
       return;
     }
 
-    let cdp: CDPSession;
+    // `cdp` starts unset. Register the close handler NOW, before the CDP
+    // attach awaits below, so a disconnect mid-attach (a flaky mobile link
+    // is exactly the scenario this feature targets) still runs cleanup
+    // instead of leaking the screencast + CDP session for the life of the
+    // process on an always-on service. The same handler also covers the
+    // ordinary case where the socket closes after everything is set up.
+    let cdp: CDPSession | undefined;
+    let closedDuringAttach = false;
+    ws.on('close', async () => {
+      closedDuringAttach = true;
+      if (cdp) {
+        await cdp.send('Page.stopScreencast').catch(() => {});
+        await cdp.detach().catch(() => {});
+      }
+      this.sessions.delete(ws);
+    });
+
     try {
       cdp = await this.driver.cdpSession();
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60 });
@@ -87,22 +98,27 @@ export class LiveView {
       return;
     }
 
-    const session: LiveSession = { ws, cdp };
-    this.sessions.add(session);
+    if (!cdp || closedDuringAttach) {
+      // The socket closed while we were still attaching CDP above: the
+      // close handler already fired, but `cdp` didn't exist yet at that
+      // point so it couldn't stop the screencast/detach. Finish that now.
+      if (cdp) {
+        await cdp.send('Page.stopScreencast').catch(() => {});
+        await cdp.detach().catch(() => {});
+      }
+      this.sessions.delete(ws);
+      return;
+    }
+
+    this.sessions.set(ws, cdp);
 
     cdp.on('Page.screencastFrame', async (f) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ data: f.data }));
       try {
-        await cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId });
+        await cdp!.send('Page.screencastFrameAck', { sessionId: f.sessionId });
       } catch {
         // Session may already be tearing down; nothing to do.
       }
-    });
-
-    ws.on('close', async () => {
-      this.sessions.delete(session);
-      await cdp.send('Page.stopScreencast').catch(() => {});
-      await cdp.detach().catch(() => {});
     });
   }
 
@@ -110,8 +126,13 @@ export class LiveView {
     return `http://127.0.0.1:${this.port}/?token=${mintToken(this.opts.secret, ttlSec)}`;
   }
 
+  /** Number of currently live (attached) screencast sessions. For tests/observability. */
+  sessionCount(): number {
+    return this.sessions.size;
+  }
+
   async stop(): Promise<void> {
-    for (const { ws, cdp } of this.sessions) {
+    for (const [ws, cdp] of this.sessions) {
       await cdp.send('Page.stopScreencast').catch(() => {});
       await cdp.detach().catch(() => {});
       ws.close();
