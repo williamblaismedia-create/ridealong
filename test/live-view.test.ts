@@ -55,6 +55,34 @@ describe('LiveView (integration)', () => {
     await env.stop();
   });
 
+  // The server only wires its per-connection message listener (frame
+  // forwarder + input relay) once CDP attach finishes — see live-view.ts.
+  // A message sent right after the client's `open` event can race ahead of
+  // that registration and be silently dropped before any listener exists,
+  // regardless of mode. That is correct (no queueing of early input — a
+  // queue would itself be a capture buffer), but it means input tests must
+  // wait for proof that attach is done before sending anything. The first
+  // screencast frame is that proof: it can only be emitted after the frame
+  // listener is registered, which happens right after the message listener
+  // in the same synchronous block, so seeing a frame guarantees the message
+  // listener is already live.
+  async function connectAttached(url: string): Promise<WebSocket> {
+    const ws = new WebSocket(url);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const poke = setInterval(() => {
+        void driver.page().evaluate(() => { document.title = 'poke-' + Math.random(); }).catch(() => {});
+      }, 100);
+      const timer = setTimeout(() => { clearInterval(poke); reject(new Error('timeout waiting for attach')); }, 4000);
+      ws.once('message', () => { clearInterval(poke); clearTimeout(timer); resolve(); });
+      ws.once('error', (err) => { clearInterval(poke); clearTimeout(timer); reject(err); });
+    });
+    return ws;
+  }
+
   it('cleans up the CDP session if the client disconnects during/right after attach (no leak)', async () => {
     expect(live.sessionCount()).toBe(0);
 
@@ -124,5 +152,73 @@ describe('LiveView (integration)', () => {
       ws.on('error', () => { /* a connection reset also counts as refused; close handler resolves */ });
     });
     expect(closeCode).toBe(1008);
+  });
+
+  it('read mode (the default) ignores an input message — no effect on the page', async () => {
+    live.setMode('read');
+    await driver.page().evaluate(() => { (document.getElementById('name') as HTMLInputElement).value = ''; });
+
+    const ws = await connectAttached(liveUrl());
+    ws.send(JSON.stringify({ t: 'key', type: 'char', text: 'z' }));
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(await driver.page().locator('#name').inputValue()).toBe('');
+    ws.close();
+  });
+
+  it('input mode relays mouse + key events to CDP, typing into the page — and retains none of it', async () => {
+    await driver.page().evaluate(() => { (document.getElementById('name') as HTMLInputElement).value = ''; });
+    const keysBefore = Object.keys(live as unknown as Record<string, unknown>).sort();
+
+    live.setMode('input');
+    expect(live.getMode()).toBe('input');
+
+    const box = await driver.page().locator('#name').boundingBox();
+    if (!box) throw new Error('no bounding box for #name');
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    const ws = await connectAttached(liveUrl());
+
+    // Distinctive string, unlikely to appear anywhere else in LiveView's own
+    // state — the no-capture assertion below checks for exactly this text.
+    const typed = 'q9zk7p';
+    ws.send(JSON.stringify({ t: 'mouse', type: 'mousePressed', x, y, button: 'left', clickCount: 1 }));
+    ws.send(JSON.stringify({ t: 'mouse', type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }));
+    for (const ch of typed) {
+      ws.send(JSON.stringify({ t: 'key', type: 'char', text: ch }));
+    }
+
+    let value = '';
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      value = await driver.page().locator('#name').inputValue();
+      if (value === typed) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(value).toBe(typed);
+
+    // NO-CAPTURE (Spec §5.8): relaying the input above must not have grown
+    // any new property on the LiveView instance — the shape a keystroke
+    // buffer/log would take — and the one string-valued field it owns
+    // (`mode`) never contains the typed text.
+    const keysAfter = Object.keys(live as unknown as Record<string, unknown>).sort();
+    expect(keysAfter).toEqual(keysBefore);
+    expect(live.getMode()).not.toContain(typed);
+
+    live.setMode('read');
+    ws.close();
+  });
+
+  it('back in read mode, the same input message is ignored again (gating is dynamic, not one-shot)', async () => {
+    live.setMode('read');
+    await driver.page().evaluate(() => { (document.getElementById('name') as HTMLInputElement).value = ''; });
+
+    const ws = await connectAttached(liveUrl());
+    ws.send(JSON.stringify({ t: 'key', type: 'char', text: 'z' }));
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(await driver.page().locator('#name').inputValue()).toBe('');
+    ws.close();
   });
 });

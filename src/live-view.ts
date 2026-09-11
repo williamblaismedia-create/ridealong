@@ -38,16 +38,36 @@ export function verifyToken(secret: string, token: string): boolean {
 }
 
 /**
- * Read-only live view: streams the driven page's screen over a token-gated
- * websocket via CDP's Page.startScreencast. No input handling here — that is
- * a later task.
+ * Live view: streams the driven page's screen over a token-gated websocket
+ * via CDP's Page.startScreencast (read mode), and — only in input mode —
+ * relays the client's mouse/key events back to Chrome via CDP
+ * Input.dispatch* (hand-the-wheel, Spec §5.8).
+ *
+ * NO-CAPTURE SAFEGUARD (Spec §5.8, hard constraint): while relaying input,
+ * this class MUST NOT store, log, buffer, or screenshot the input payloads.
+ * The input handler below parses each message only to strip off `t` and
+ * hand the rest straight to `cdp.send`; nothing is pushed to a retained
+ * array, nothing is console.logged, and there is no property on LiveView
+ * that accumulates keystrokes. Keep it that way: any change that makes a
+ * message outlive its handler call breaks this guarantee.
  */
 export class LiveView {
   private server: WebSocketServer | undefined;
   private port = 0;
   private sessions = new Map<WebSocket, CDPSession>();
+  private mode: 'read' | 'input' = 'read';
 
   constructor(private driver: Driver, private opts: { secret: string }) {}
+
+  /** Switch between read-only streaming and hand-the-wheel input relay. */
+  setMode(mode: 'read' | 'input'): void {
+    this.mode = mode;
+  }
+
+  /** Current mode. For tools/tests — not part of any capture path. */
+  getMode(): 'read' | 'input' {
+    return this.mode;
+  }
 
   async start(port: number): Promise<{ url: (ttlSec?: number) => string }> {
     const wss = new WebSocketServer({ host: '127.0.0.1', port });
@@ -111,6 +131,25 @@ export class LiveView {
     }
 
     this.sessions.set(ws, cdp);
+
+    // Hand-the-wheel input relay. Wired here, in the same place as the frame
+    // forwarder below, only once the socket is confirmed open with `cdp`
+    // attached. NO-CAPTURE: besides the `cdp.send` call itself, this handler
+    // never writes the message anywhere — no array push, no console.log —
+    // and the parsed object goes out of scope the instant the handler
+    // returns.
+    ws.on('message', async (raw) => {
+      if (this.mode !== 'input') return; // read mode: input is ignored entirely
+      try {
+        const msg = JSON.parse(raw.toString());
+        const { t, ...rest } = msg;
+        if (t === 'mouse') await cdp!.send('Input.dispatchMouseEvent', rest);
+        else if (t === 'key') await cdp!.send('Input.dispatchKeyEvent', rest);
+      } catch {
+        // Malformed JSON or a CDP dispatch failure: drop silently. Never
+        // log or retain `raw`/`msg` — that is the no-capture guarantee.
+      }
+    });
 
     cdp.on('Page.screencastFrame', async (f) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ data: f.data }));
