@@ -1,0 +1,8 @@
+# Données et secrets — jamais dans le dépôt (voir spec §10, §12)
+/data/
+*.env
+.env.*
+!.env.example
+profile/
+artifacts/
+node_modules/
