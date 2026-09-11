@@ -40,6 +40,33 @@ describe('Tabs', () => {
     await expect(tabs.close(99)).rejects.toThrow(/onglet 99 inexistant/);
     await expect(tabs.select(99)).rejects.toThrow(/onglet 99 inexistant/);
   });
+
+  it('keeps the right tab active by identity when a lower-indexed tab is closed and indices shift', async () => {
+    const tabs = new Tabs(driver);
+    const urlA = `${env.pageUrl}?t=a`;
+    const urlB = `${env.pageUrl}?t=b`;
+    const idA = await tabs.open(urlA); // primary=0, so idA===1
+    const idB = await tabs.open(urlB); // idB===2
+    await tabs.select(idB);
+
+    const before = await tabs.list();
+    expect(before.length).toBe(3);
+    expect(before.find((t) => t.url === urlB)?.active).toBe(true);
+
+    // idA < idB: closing it shifts idB's tab down to numeric index 1.
+    await tabs.close(idA);
+
+    const after = await tabs.list();
+    expect(after.length).toBe(2);
+    const stillActive = after.find((t) => t.active);
+    expect(stillActive?.url).toBe(urlB);
+  });
+
+  it('refuses to close the primary tab', async () => {
+    const tabs = new Tabs(driver);
+    const primaryId = driver.context().pages().indexOf(driver.page());
+    await expect(tabs.close(primaryId)).rejects.toThrow(/impossible de fermer/);
+  });
 });
 
 describe('buildServer multi-tab tools', () => {
