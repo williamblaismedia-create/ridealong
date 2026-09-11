@@ -26,6 +26,17 @@ function intOr(v: string | undefined, dflt: number): number {
   return Number.isFinite(n) ? n : dflt;
 }
 
+/**
+ * A live-view secret must be real. An empty/whitespace value — or the runbook's
+ * `CHANGE_ME` placeholder left in place — is treated as UNSET (live-view stays
+ * off, gracefully) so the HMAC is never keyed on a guessable literal and tokens
+ * can't be forged (N3). The launcher also warns on stderr in this case.
+ */
+function realSecret(v: string | undefined): string | undefined {
+  const s = v?.trim();
+  return !s || s === 'CHANGE_ME' ? undefined : s;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     cdpUrl: env.SCRY_CDP_URL ?? 'http://127.0.0.1:9222',
@@ -36,7 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     defaultTimeoutMs: intOr(env.SCRY_DEFAULT_TIMEOUT_MS, 15000),
     readBudgetChars: intOr(env.SCRY_READ_BUDGET_CHARS, 8000),
-    secret: env.SCRY_LIVE_SECRET,
+    secret: realSecret(env.SCRY_LIVE_SECRET),
     liveViewPort: intOr(env.SCRY_LIVE_PORT, 9400),
     livePublicUrl: env.SCRY_LIVE_PUBLIC_URL,
   };

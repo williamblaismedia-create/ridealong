@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Config + secret from outside git / outside ~/projets. `set -a` exports
 # every assignment so the node process inherits them (SCRY_CDP_URL,
-# SCRY_DATA_DIR, SCRY_LIVE_PORT, SCRY_LIVE_SECRET).
+# SCRY_DATA_DIR, SCRY_LIVE_PORT, SCRY_LIVE_SECRET, SCRY_LIVE_PUBLIC_URL).
 ENV_FILE="${SCRY_ENV_FILE:-${HOME}/scry-donnees/scry.env}"
 if [ -f "${ENV_FILE}" ]; then
   set -a
@@ -33,6 +33,17 @@ if [ -f "${ENV_FILE}" ]; then
 else
   echo "scry-mcp: env file not found at ${ENV_FILE}" >&2
 fi
+
+# Warn LOUDLY (stderr, never stdout) if the live-view secret is missing or
+# still the CHANGE_ME placeholder. We do NOT exit: perception/action work
+# without it. But config.ts treats such a value as unset, so the live view
+# and its tools stay OFF until a real secret (openssl rand -hex 32) is set —
+# the HMAC is never keyed on a guessable literal (N3).
+case "${SCRY_LIVE_SECRET:-}" in
+  "" | CHANGE_ME)
+    echo "scry-mcp: SCRY_LIVE_SECRET absent ou laisse a CHANGE_ME dans ${ENV_FILE} — vue live DESACTIVEE. Generez-en un (openssl rand -hex 32) pour l'activer." >&2
+    ;;
+esac
 
 # Resolve the node binary robustly. w-agent has no /usr/bin/node; node lives
 # at ~/.local/node/bin/node (v22) and is normally on PATH via ~/.bashrc. Order:

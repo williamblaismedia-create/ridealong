@@ -67,6 +67,17 @@ export class LiveView {
   /** Switch between read-only streaming and hand-the-wheel input relay. */
   setMode(mode: 'read' | 'input'): void {
     this.mode = mode;
+    // Push the new mode to every attached viewer NOW. The mode also rides on
+    // each screencast frame, but a static login page produces no frames, so
+    // without this the phone would stay on 'read' and drop William's taps —
+    // exactly the case hand-the-wheel exists for (N1). We send only the mode
+    // string; no keystroke, no token — the no-capture invariant is untouched.
+    const payload = JSON.stringify({ mode });
+    for (const ws of this.sessions.keys()) {
+      if (ws.readyState === ws.OPEN) {
+        try { ws.send(payload); } catch { /* a dead socket is cleaned up elsewhere */ }
+      }
+    }
   }
 
   /** Current mode. For tools/tests — not part of any capture path. */
@@ -435,7 +446,12 @@ const VIEWER_HTML = `<!doctype html>
   // treated as shortcuts (no text). keyUp mirrors it. Nothing is buffered.
   window.addEventListener('keydown', function (e) {
     if (mode !== 'input') return;
-    var text = (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) ? e.key : undefined;
+    // A printable key carries its char as text; Enter carries a carriage
+    // return so the keyDown actually submits the login form (without text,
+    // CDP's Enter does nothing). Shortcuts (ctrl/meta) carry no text.
+    var text = (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) ? e.key
+             : (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) ? '\\r'
+             : undefined;
     send({ t: 'key', type: 'keyDown', key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, text: text, modifiers: mods(e) });
     if (e.key !== 'F5') e.preventDefault();
   });

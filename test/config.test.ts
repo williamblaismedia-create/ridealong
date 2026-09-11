@@ -34,4 +34,13 @@ describe('loadConfig', () => {
     expect(c.secret).toBe('shh');
     expect(c.liveViewPort).toBe(9555);
   });
+
+  it('treats an empty or CHANGE_ME placeholder secret as unset, and trims a real one (N3)', () => {
+    // A guessable literal must never key the HMAC — these leave live-view off.
+    expect(loadConfig({ SCRY_LIVE_SECRET: 'CHANGE_ME' }).secret).toBeUndefined();
+    expect(loadConfig({ SCRY_LIVE_SECRET: '' }).secret).toBeUndefined();
+    expect(loadConfig({ SCRY_LIVE_SECRET: '   ' }).secret).toBeUndefined();
+    // A real secret survives; surrounding whitespace (an env-file slip) is trimmed.
+    expect(loadConfig({ SCRY_LIVE_SECRET: '  real-secret ' }).secret).toBe('real-secret');
+  });
 });

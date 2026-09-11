@@ -161,6 +161,28 @@ describe('LiveView (integration)', () => {
     ws.close();
   });
 
+  it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      const modePush = new Promise<any>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no standalone mode push within 2s')), 2000);
+        ws.on('message', (data) => {
+          let m: any;
+          try { m = JSON.parse(data.toString()); } catch { return; }
+          // Isolate the standalone {mode} broadcast from screencast frames,
+          // which carry {data,...}. On a static page no frame flows, so this
+          // push is the ONLY thing that would flip the viewer to input mode.
+          if (m && typeof m.mode === 'string' && m.data === undefined) { clearTimeout(timer); resolve(m); }
+        });
+      });
+      live.setMode('input');
+      expect((await modePush).mode).toBe('input');
+    } finally {
+      live.setMode('read'); // restore shared state for later tests
+      ws.close();
+    }
+  });
+
   it('closes the connection when the token is expired', async () => {
     const expiredUrl = `ws://127.0.0.1:${PORT}/?token=${mintToken(secret, -1)}`;
     const ws = new WebSocket(expiredUrl);
