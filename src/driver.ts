@@ -1,5 +1,25 @@
 import { chromium, type Browser, type Page } from 'playwright';
 
+// Transient CDP/Playwright errors: the target or session flickered but the
+// browser is still usable, so a short retry is worth it. Anything else
+// (assertion failures, bad selectors, application logic errors) is not
+// transient and must fail fast.
+const TRANSIENT_ERROR = /Target closed|renderer|timeout|detached|not attached|Session closed/i;
+
+export async function withRetry<T>(fn: () => Promise<T>, opts?: { tries?: number; baseMs?: number }): Promise<T> {
+  const tries = opts?.tries ?? 3;
+  const baseMs = opts?.baseMs ?? 100;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isTransient = TRANSIENT_ERROR.test(String((err as { message?: unknown } | undefined)?.message));
+      if (!isTransient || attempt >= tries - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, baseMs * 2 ** attempt));
+    }
+  }
+}
+
 export class Driver {
   private dialogHandled = false;
   private dialogOpen = false;
@@ -28,7 +48,7 @@ export class Driver {
   page(): Page { return this._page; }
 
   async navigate(url: string): Promise<void> {
-    await this._page.goto(url, { waitUntil: 'domcontentloaded' });
+    await withRetry(() => this._page.goto(url, { waitUntil: 'domcontentloaded' }));
   }
 
   async waitReady(): Promise<void> {
@@ -36,11 +56,11 @@ export class Driver {
   }
 
   async screenshot(opts: { fullPage?: boolean } = {}): Promise<Buffer> {
-    return this._page.screenshot({ fullPage: opts.fullPage ?? false, type: 'jpeg', quality: 80 });
+    return withRetry(() => this._page.screenshot({ fullPage: opts.fullPage ?? false, type: 'jpeg', quality: 80 }));
   }
 
   async evaluate<T>(fn: string | ((...a: any[]) => T), arg?: any): Promise<T> {
-    return this._page.evaluate(fn as any, arg);
+    return withRetry(() => this._page.evaluate(fn as any, arg));
   }
 
   dialogWasHandled(): boolean { return this.dialogHandled; }
