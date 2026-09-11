@@ -25,4 +25,14 @@ describe('ArtifactStore', () => {
     const back = await store.read(r.path);
     expect([...back]).toEqual([1, 2, 3]);
   });
+
+  it('rejects kind with path separators', async () => {
+    const store = new ArtifactStore(dir);
+    await expect(store.save('bad/kind', 'x', 'txt')).rejects.toThrow();
+  });
+
+  it('rejects ext with path traversal attempts', async () => {
+    const store = new ArtifactStore(dir);
+    await expect(store.save('dom', 'x', '../evil')).rejects.toThrow();
+  });
 });
