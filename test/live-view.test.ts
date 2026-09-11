@@ -351,6 +351,27 @@ describe('LiveView (integration)', () => {
     await expect(lv.stop()).resolves.toBeUndefined();
   });
 
+  it('stop() terminates an attached client promptly and closes the port (M5)', async () => {
+    const lv = new LiveView(driver, { secret });
+    await lv.start(9410);
+    const ws = await connectAttached(`ws://127.0.0.1:9410/?token=${mintToken(secret, 60)}`);
+    ws.on('error', () => {}); // terminate() shows up as a reset here — expected
+    const closed = new Promise<void>((resolve) => ws.on('close', () => resolve()));
+
+    const t0 = Date.now();
+    await lv.stop();
+    await closed;
+    expect(Date.now() - t0).toBeLessThan(5000); // no 30s graceful-close hang
+
+    // The port is genuinely released: a fresh connection is refused.
+    const outcome = await new Promise<string>((resolve) => {
+      const probe = new WebSocket(`ws://127.0.0.1:9410/?token=${mintToken(secret, 60)}`);
+      probe.on('open', () => { probe.close(); resolve('open'); });
+      probe.on('error', (e: NodeJS.ErrnoException) => resolve(e?.code ?? 'error'));
+    });
+    expect(outcome).toBe('ECONNREFUSED');
+  });
+
   it('a second bind on a busy port rejects while the first keeps serving (graceful degradation)', async () => {
     const a = new LiveView(driver, { secret });
     await a.start(9406);

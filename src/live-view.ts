@@ -58,6 +58,9 @@ export class LiveView {
   private port = 0;
   private sessions = new Map<WebSocket, CDPSession>();
   private mode: 'read' | 'input' = 'read';
+  // Set for the duration of stop(): an attach that finishes after clear() must
+  // see this and tear itself down instead of leaving an untracked screencast.
+  private stopping = false;
 
   constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string }) {}
 
@@ -91,18 +94,23 @@ export class LiveView {
    */
   async ensureStarted(port?: number): Promise<void> {
     if (this.server) return;
+    this.stopping = false; // fresh server: accept connections again after a stop()
     const bindPort = port ?? this.port;
 
     // We own the HTTP server (rather than letting ws create its own) so that
     // non-upgrade GETs get the viewer page instead of ws's canned "426 Upgrade
     // Required" (C2). ws attaches its upgrade handler to it via { server }.
+    // maxPayload caps inbound frames (m3): input messages are tiny, so a large
+    // frame is abuse — reject it small rather than buffer up to ws's 100 MiB.
     const httpServer = createServer((req, res) => this.serveViewer(req, res));
-    const wss = new WebSocketServer({ server: httpServer });
+    const wss = new WebSocketServer({ server: httpServer, maxPayload: 64 * 1024 });
     this.server = wss;
     this.httpServer = httpServer;
 
     wss.on('connection', (ws, req) => {
-      void this.handleConnection(ws, req);
+      // m3: a throw out of handleConnection must not become an unhandled
+      // rejection — terminate the socket instead.
+      void this.handleConnection(ws, req).catch(() => ws.terminate());
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -157,6 +165,13 @@ export class LiveView {
   }
 
   private async handleConnection(ws: WebSocket, req: import('node:http').IncomingMessage): Promise<void> {
+    // m3: guard the socket's 'error' FIRST. ws emits 'error' unguarded
+    // (receiverOnError); with no listener an EventEmitter 'error' throws and
+    // takes the whole MCP process down. Invalid UTF-8 / an over-maxPayload
+    // frame / a bad close code from a token-holder is the one path by which a
+    // ws client could crash the server — terminate the socket instead.
+    ws.on('error', () => ws.terminate());
+
     const token = new URL(req.url ?? '', 'http://x').searchParams.get('token') ?? '';
     if (!verifyToken(this.opts.secret, token)) {
       ws.close(1008, 'jeton invalide');
@@ -187,32 +202,59 @@ export class LiveView {
 
     try {
       cdp = await this.driver.cdpSession();
-      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60 });
+      // m2: register the frame listener BEFORE startScreencast. ws dispatches
+      // every protocol frame in a TCP chunk synchronously, so a screencastFrame
+      // arriving in the same chunk as the startScreencast response would be
+      // emitted before the listener exists -> never acked -> the cast stalls
+      // against Chromium's small in-flight cap with no error.
+      cdp.on('Page.screencastFrame', async (f) => {
+        // m2: drop (but still ACK) a frame when the socket is backed up, so a
+        // slow phone link can't grow server memory unbounded or lag minutes
+        // behind. Frame payload: the JPEG, its CSS-pixel dimensions (so the
+        // page maps a click back to CDP coordinates), and the current mode.
+        // Server->client only — no input is ever echoed here.
+        if (ws.readyState === ws.OPEN && ws.bufferedAmount <= 1024 * 1024) {
+          ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode }));
+        }
+        try {
+          await cdp!.send('Page.screencastFrameAck', { sessionId: f.sessionId });
+        } catch {
+          // Session may already be tearing down; nothing to do.
+        }
+      });
+      // m2: cap the frame size (was uncapped: 1440x900 JPEGs at full rate).
+      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 });
     } catch {
+      // m1: detach the CDP session on the failure path. A disconnect during
+      // newCDPSession followed by a startScreencast throw would otherwise leave
+      // `cdp` attached forever (the closedDuringAttach cleanup below is skipped
+      // by this return).
+      await cdp?.detach().catch(() => {});
       ws.close(1011, 'echec du screencast');
       return;
     }
 
-    if (!cdp || closedDuringAttach) {
-      // The socket closed while we were still attaching CDP above: the
-      // close handler already fired, but `cdp` didn't exist yet at that
-      // point so it couldn't stop the screencast/detach. Finish that now.
+    if (closedDuringAttach || this.stopping || !this.server) {
+      // The socket closed, or stop() ran, while we were attaching. The close
+      // handler may have fired before `cdp` existed, and an attach that
+      // finishes after stop()'s clear() would otherwise leave a running
+      // screencast nobody tracks (M5). Tear this one down now.
       if (cdp) {
         await cdp.send('Page.stopScreencast').catch(() => {});
         await cdp.detach().catch(() => {});
       }
       this.sessions.delete(ws);
+      ws.terminate();
       return;
     }
 
     this.sessions.set(ws, cdp);
 
-    // Hand-the-wheel input relay. Wired here, in the same place as the frame
-    // forwarder below, only once the socket is confirmed open with `cdp`
-    // attached. NO-CAPTURE: besides the `cdp.send` call itself, this handler
-    // never writes the message anywhere — no array push, no console.log —
-    // and the parsed object goes out of scope the instant the handler
-    // returns.
+    // Hand-the-wheel input relay. Wired only once the socket is confirmed open
+    // with `cdp` attached. NO-CAPTURE: besides the `cdp.send` call itself, this
+    // handler never writes the message anywhere — no array push, no
+    // console.log — and the parsed object goes out of scope the instant the
+    // handler returns.
     ws.on('message', async (raw) => {
       if (this.mode !== 'input') return; // read mode: input is ignored entirely
       try {
@@ -223,21 +265,6 @@ export class LiveView {
       } catch {
         // Malformed JSON or a CDP dispatch failure: drop silently. Never
         // log or retain `raw`/`msg` — that is the no-capture guarantee.
-      }
-    });
-
-    cdp.on('Page.screencastFrame', async (f) => {
-      if (ws.readyState === ws.OPEN) {
-        // Frame payload for the viewer page: the JPEG, the frame's CSS-pixel
-        // dimensions (so the page can map a click back to CDP coordinates),
-        // and the current mode (so the page shows read vs input). This is
-        // read-mode/server->client data only — no input is ever echoed here.
-        ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode }));
-      }
-      try {
-        await cdp!.send('Page.screencastFrameAck', { sessionId: f.sessionId });
-      } catch {
-        // Session may already be tearing down; nothing to do.
       }
     });
   }
@@ -268,16 +295,24 @@ export class LiveView {
     const httpServer = this.httpServer;
     if (!wss) return; // idempotent: already stopped (a second live_stop resolves)
     // Clear the handles up front so url() throws and ensureStarted() re-binds
-    // afterwards, and so a concurrent stop() is a no-op.
+    // afterwards, and so a concurrent stop() is a no-op. `stopping` makes any
+    // in-flight attach tear itself down instead of re-adding to `sessions`.
+    this.stopping = true;
     this.server = undefined;
     this.httpServer = undefined;
 
     for (const [ws, cdp] of this.sessions) {
       await cdp.send('Page.stopScreencast').catch(() => {});
       await cdp.detach().catch(() => {});
-      ws.close();
+      // M5: terminate(), not the graceful close() — a dead mobile peer would
+      // otherwise hold ws's 30s closeTimeout and stall this whole tool call.
+      ws.terminate();
     }
     this.sessions.clear();
+
+    // M5: terminate any client that passed the token check but isn't in
+    // `sessions` yet (still mid-attach), or wss.close() below waits on it.
+    for (const client of wss.clients) client.terminate();
 
     await new Promise<void>((resolve, reject) => {
       wss.close((err) => (err ? reject(err) : resolve()));
