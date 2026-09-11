@@ -71,8 +71,17 @@ export async function main(): Promise<void> {
 
   let liveView: LiveView | undefined;
   if (cfg.secret) {
-    liveView = new LiveView(driver, { secret: cfg.secret });
-    await liveView.start(cfg.liveViewPort);
+    try {
+      liveView = new LiveView(driver, { secret: cfg.secret });
+      await liveView.start(cfg.liveViewPort);
+    } catch (e) {
+      // A bind failure (stale process, restart race on an always-on host)
+      // must not take the whole MCP server down with it — degrade to a
+      // working core server without the live_* tools instead. Never log
+      // the secret value, only the error.
+      console.error('[scry] live-view indisponible : ' + (e as Error).message);
+      liveView = undefined;
+    }
   } else {
     console.error('[scry] SCRY_LIVE_SECRET absent : vue live desactivee.');
   }
