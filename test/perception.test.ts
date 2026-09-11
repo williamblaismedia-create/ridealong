@@ -6,6 +6,7 @@ import { startBrowser } from './helpers.js';
 import { Driver } from '../src/driver.js';
 import { ArtifactStore } from '../src/artifact-store.js';
 import { Perception } from '../src/perception.js';
+import { Action } from '../src/action.js';
 
 let env: Awaited<ReturnType<typeof startBrowser>>;
 let driver: Driver;
@@ -61,5 +62,24 @@ describe('Perception', () => {
   it('screenshot() writes a file and returns its path', async () => {
     const s = await per.screenshot();
     expect(s.path).toMatch(/\.jpg$/);
+  });
+
+  it('act() resolves an originally-captured ref even after the DOM shifts above it', async () => {
+    // Reset to a clean fixture so earlier tests' mutations don't skew ref numbering.
+    await driver.navigate(env.pageUrl); await driver.waitReady();
+    const wired = new Action(driver, (ref) => per.resolveRefNode(ref));
+    const snap = await per.snapshot();
+    const go = snap.nodes.find((n) => n.role === 'button' && n.name === 'Go')!;
+    // Prepend a NEW button before #go: a fresh re-enumeration would renumber refs,
+    // so the captured "Go" ref would denote this intruder instead. Resolving against
+    // the captured registry must still target the real Go button.
+    await driver.page().evaluate(() => {
+      const b = document.createElement('button');
+      b.textContent = 'Intrus';
+      document.body.insertBefore(b, document.getElementById('go'));
+    });
+    await wired.act(go.ref, 'click');
+    // #go's handler sets status to 'done'; the intruder has no handler.
+    expect(await driver.page().locator('#status').textContent()).toBe('done');
   });
 });

@@ -2,9 +2,17 @@ import type { Driver } from './driver.js';
 import { snapshotWithRefs, resolveRef, type RefNode } from './refs.js';
 
 export class Action {
-  constructor(private driver: Driver) {}
+  constructor(private driver: Driver, private lookup?: (ref: string) => RefNode | undefined) {}
 
   private async resolve(ref: string): Promise<RefNode> {
+    // Prefer the perception registry (what the model last saw); refs are stable
+    // across the perceive->act boundary. Fall back to a fresh snapshot only when
+    // no lookup was wired.
+    if (this.lookup) {
+      const node = this.lookup(ref);
+      if (!node) throw new Error(`ref ${ref} introuvable dans le snapshot courant`);
+      return node;
+    }
     const { nodes } = await snapshotWithRefs(this.driver.page());
     const node = nodes.find((n) => n.ref === ref);
     if (!node) throw new Error(`ref ${ref} introuvable dans le snapshot courant`);

@@ -38,6 +38,13 @@ export class Perception {
     return { state, text: fullText.slice(0, budget), nodes, truncated: true, path: saved.path };
   }
 
+  /** Resolve a ref against the nodes captured at the last snapshot()/find(), so
+   *  act/fill target what the model actually saw — not a fresh re-enumeration
+   *  whose sequence numbers may have shifted if the DOM changed meanwhile. */
+  resolveRefNode(ref: string): RefNode | undefined {
+    return this.lastNodes.find((n) => n.ref === ref);
+  }
+
   async find(query: string): Promise<RefNode[]> {
     const { nodes } = await snapshotWithRefs(this.driver.page());
     this.lastNodes = nodes;

@@ -46,7 +46,9 @@ export async function main(): Promise<void> {
   const driver = await Driver.connect(cfg.cdpUrl, { viewport: cfg.viewport, defaultTimeoutMs: cfg.defaultTimeoutMs });
   const store = new ArtifactStore(cfg.dataDir);
   const network = new Network(driver, store); network.start();
-  const server = buildServer({ perception: new Perception(driver, store, cfg.readBudgetChars), action: new Action(driver), network });
+  const perception = new Perception(driver, store, cfg.readBudgetChars);
+  const action = new Action(driver, (ref) => perception.resolveRefNode(ref));
+  const server = buildServer({ perception, action, network });
   await server.connect(new StdioServerTransport());
 }
 
