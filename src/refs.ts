@@ -7,9 +7,50 @@ export interface RefNode { ref: string; role: string; name: string; level: numbe
 // task-4-report.md for the diagnostic. `locator.ariaSnapshot()` is the current
 // equivalent; it returns a YAML-like text tree (e.g. `- button "Go"`,
 // `- listitem: alpha`, nested lines indented two spaces per level) instead of a JS
-// object tree. This regex parses that text into the same RefNode shape the brief
-// specifies; the public interface (RefNode, snapshotWithRefs, resolveRef) is unchanged.
-const LINE_RE = /^(\s*)-\s+([A-Za-z][\w-]*)(?:\s+"([^"]*)"(?:\s*\[[^\]]*\])?|:\s*(.*))?$/;
+// object tree; the public interface (RefNode, snapshotWithRefs, resolveRef) is unchanged.
+//
+// parseAriaLine is a pure per-line parser covering the documented aria-snapshot
+// grammar (https://playwright.dev/docs/aria-snapshots), after stripping the leading
+// indent and the "- " bullet:
+//   role                        -> { role, name: '' }
+//   role "name"                 -> { role, name }
+//   role [attr]                 -> { role, name: '' }     (bracketed attrs ignored)
+//   role "name" [attr]          -> { role, name }
+//   role "name" [attr]: value   -> { role, name }         (quoted name wins; colon value dropped)
+//   role: value                 -> { role, name: value }
+// Returns null only for lines with no role token at all (blank/structural lines) —
+// it must never silently drop a line that clearly names a role.
+export function parseAriaLine(line: string): { role: string; name: string; level: number } | null {
+  const bulletMatch = /^(\s*)-\s+(.*)$/.exec(line);
+  if (!bulletMatch) return null;
+  const [, indent, rest] = bulletMatch;
+  const level = Math.floor(indent.length / 2);
+
+  const roleMatch = /^([^\s"\[:]+)/.exec(rest);
+  if (!roleMatch) return null;
+  const role = roleMatch[1];
+  let remainder = rest.slice(role.length);
+
+  let name = '';
+  const nameMatch = /^\s*"([^"]*)"/.exec(remainder);
+  if (nameMatch) {
+    name = nameMatch[1];
+    remainder = remainder.slice(nameMatch[0].length);
+  }
+
+  let attrMatch = /^\s*\[[^\]]*\]/.exec(remainder);
+  while (attrMatch) {
+    remainder = remainder.slice(attrMatch[0].length);
+    attrMatch = /^\s*\[[^\]]*\]/.exec(remainder);
+  }
+
+  if (!name) {
+    const colonMatch = /^\s*:\s*(.*)$/.exec(remainder);
+    if (colonMatch) name = colonMatch[1].trim();
+  }
+
+  return { role, name, level };
+}
 
 export async function snapshotWithRefs(page: Page): Promise<{ nodes: RefNode[]; text: string }> {
   const raw = await page.locator('body').ariaSnapshot();
@@ -19,12 +60,9 @@ export async function snapshotWithRefs(page: Page): Promise<{ nodes: RefNode[]; 
   let seq = 0;
 
   for (const rawLine of raw.split('\n')) {
-    if (!rawLine.trim()) continue;
-    const m = LINE_RE.exec(rawLine);
-    if (!m) continue;
-    const [, indent, role, quotedName, colonText] = m;
-    const level = Math.floor(indent.length / 2);
-    const name = quotedName ?? colonText ?? '';
+    const parsed = parseAriaLine(rawLine);
+    if (!parsed) continue;
+    const { role, name, level } = parsed;
     const key = `${role} ${name}`;
     const nth = counter.get(key) ?? 0;
     counter.set(key, nth + 1);
