@@ -1,0 +1,26 @@
+# Scry — Chrome host unit.
+#
+# This is a systemd --user unit: it lives in ~/.config/systemd/user/ on
+# w-agent (copied there at deploy time — see docs/DEPLOIEMENT-W-AGENT.md),
+# NOT a system-wide unit under /etc/systemd or /usr/lib/systemd. Manage it
+# with `systemctl --user ...`, never plain `systemctl ...`.
+#
+# For it to stay up across logout and reboot without an active login
+# session (same pattern as w-agent's other user services), linger must be
+# enabled once for this user:
+#   loginctl enable-linger will
+#
+# Install / start:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now scry-chrome
+
+[Unit]
+Description=Scry — Chrome host (Xvfb + Google Chrome, local CDP)
+
+[Service]
+ExecStart=%h/scry/scripts/launch-chrome.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
