@@ -1,8 +1,8 @@
-# Regard — des yeux sur le web pour Claude
+# Scry — des yeux sur le web pour Claude
 
 **Date :** 2026-09-11
-**Statut :** design, en attente de revue
-**Nom de travail :** « Regard » (provisoire, voir Questions ouvertes)
+**Statut :** design, décisions arrêtées, en attente de revue finale
+**Nom :** Scry (voir « scryer » : observer un lieu distant à travers une surface — exactement ce que fait l'outil)
 
 > Prose en français pour la revue ; identifiants et code en anglais.
 
@@ -40,7 +40,7 @@ Hors de portée par principe, jamais négociable :
   iPhone / Mac (télécommande)
         │  (SSH par clés / session distante, derrière le tunnel Cloudflare)
         ▼
-  Claude Code  ──MCP──▶  Serveur Regard (Node/TS, sur w-agent)
+  Claude Code  ──MCP──▶  Serveur Scry (Node/TS, sur w-agent)
                               │  CDP (Chrome DevTools Protocol)
                               ▼
                         Google Chrome (w-agent, always-on,
@@ -64,7 +64,7 @@ Chaque unité a un seul rôle, une interface nette, et se teste seule.
 ## 5. Composants
 
 ### 5.1 Hôte Chrome (`chrome-host`)
-- **Rôle :** un vrai Google Chrome sur w-agent, toujours allumé, avec un **profil persistant** (les sessions de William tiennent d'un jour à l'autre). Lancé **headful sous Xvfb** (framebuffer virtuel) : nécessaire pour les codecs propriétaires (H.264/AAC → les vidéos ne sont pas noires) et pour le screencast de la vue live. Port de debug CDP ouvert **en local uniquement** (jamais exposé au réseau ; on y accède par le serveur Regard sur la même machine).
+- **Rôle :** un vrai Google Chrome sur w-agent, toujours allumé, avec un **profil persistant** (les sessions de William tiennent d'un jour à l'autre). Lancé **headful sous Xvfb** (framebuffer virtuel) : nécessaire pour les codecs propriétaires (H.264/AAC → les vidéos ne sont pas noires) et pour le screencast de la vue live. Port de debug CDP ouvert **en local uniquement** (jamais exposé au réseau ; on y accède par le serveur Scry sur la même machine).
 - **Interface :** un endpoint CDP local (`ws://127.0.0.1:<port>`).
 - **Dépend de :** Google Chrome installé, Xvfb, un superviseur de processus (systemd user unit, comme les autres services de w-agent).
 
@@ -112,8 +112,8 @@ Chaque unité a un seul rôle, une interface nette, et se teste seule.
 - **Dépend de :** `driver` (screencast + injection d'entrées), l'accès distant (§5.9).
 
 ### 5.9 Accès distant (`remote-access`)
-- **Rôle :** joindre Regard et la vue live **de n'importe où**, iPhone compris, de façon sûre.
-  - Claude atteint w-agent par **SSH (clés)** ou une **session Claude Code distante**.
+- **Rôle :** joindre Scry et la vue live **de n'importe où**, iPhone compris, de façon sûre.
+  - Claude atteint w-agent par **SSH (clés) ET par une session Claude Code distante** — les deux câblés : SSH comme filet universel, la session distante pour le confort.
   - Le **lien de vue live** sort par le **tunnel Cloudflare existant** de w-agent, **authentifié**, avec **jeton qui expire**. Jamais public : il montre le navigateur connecté de William.
 - **Dépend de :** le tunnel Cloudflare déjà en place, les clés SSH.
 
@@ -153,8 +153,8 @@ Principe transverse : **sortie courte par défaut** (résumé + `ref`), le volum
 
 ## 10. Modèle de sécurité
 
-- **Zéro secret dans le dépôt.** Profil, cookies, session, artefacts vivent **hors de l'arbre git**, sur w-agent, comme le `.env` Marketis. Config par variables d'environnement et flags.
-- **Port CDP local seulement.** Le débogueur de Chrome n'est jamais exposé au réseau ; seul le serveur Regard, sur la même machine, s'y connecte.
+- **Zéro secret dans le dépôt, et données hors sync.** Le code vit dans `~/scry/` sur w-agent ; le profil Chrome, la session, les cookies et les artefacts vivent dans **`~/scry-donnees/`**, **hors de l'arbre git ET hors du dossier Syncthing** `~/projets`. Deux raisons fermes : ce profil pèse lourd et contient la session de William, il ne doit **jamais** se synchroniser vers le Mac ; et Syncthing a déjà déplacé l'état git sous nos pieds cette session. Config par variables d'environnement et flags, comme le `.env` Marketis.
+- **Port CDP local seulement.** Le débogueur de Chrome n'est jamais exposé au réseau ; seul le serveur Scry, sur la même machine, s'y connecte.
 - **Lien de vue live : authentifié, jeton qui expire, derrière le tunnel.** Jamais public. Un lien qui fuit = quelqu'un qui voit la session en direct.
 - **Accès distant par clés**, jamais par mot de passe qui voyage.
 - **Cadence anti-robot.** Rythme humain des actions pour limiter le risque de signalement des comptes (surtout Google). Rappel assumé : automatiser une Gmail connectée depuis un serveur peut déclencher les sécurités de Google ; on avance prudemment, c'est le compte de William.
@@ -183,7 +183,7 @@ Chaque unité (`driver`, `perception`, `action`, `network`, `artifact-store`, `l
 ## 14. Choix techniques
 
 - **Langage :** Node.js + TypeScript.
-- **Pilotage CDP :** **Playwright en `connectOverCDP`** sur le vrai Chrome (recommandé) — n'embarque pas Chromium quand on s'attache à un Chrome existant, et donne gratuitement des attentes robustes, un snapshot d'accessibilité (`page.accessibility.snapshot()`) et le screencast via session CDP. Alternative plus mince : `puppeteer-core` ou `chrome-remote-interface` (moins de code tiers, plus à écrire nous-mêmes).
+- **Pilotage CDP :** **Playwright en `connectOverCDP`** sur le vrai Chrome — **retenu**. N'embarque pas Chromium quand on s'attache à un Chrome existant, et donne gratuitement les deux choses les plus dures : les **attentes robustes** (fini les timeouts et le « renderer busy ») et le **snapshot d'accessibilité** (`page.accessibility.snapshot()`, le cœur des yeux). Pour ce que `connectOverCDP` bride (screencast, téléchargements), on descend au **CDP brut** que Playwright expose via `newCDPSession`. Écartés : `puppeteer-core` / `chrome-remote-interface`, plus minces mais plus à écrire nous-mêmes.
 - **MCP :** SDK officiel `@modelcontextprotocol/sdk` (TypeScript).
 - **Vue live :** `Page.startScreencast` (CDP) → websocket → page statique minimale.
 - **Supervision :** unit systemd utilisateur sur w-agent, `linger` actif (comme les services existants).
@@ -193,9 +193,11 @@ Chaque unité (`driver`, `perception`, `action`, `network`, `artifact-store`, `l
 v1 = `chrome-host` + `driver` + `mcp-server` + `perception` + `action` + `network` + `artifact-store` + `live-view` (lecture seule et passe-la-main) + accès distant.
 **Critère d'acceptation :** de l'iPhone, William ouvre le lien, se connecte à Timeliner par passe-la-main, et Claude capture proprement un premier écran (snapshot + capture + une vignette via `fetch_with_session`), le tout écrit sur disque de w-agent, contexte de Claude épargné. Ensuite, le lot des ~50 écrans.
 
-## 16. Questions ouvertes
+## 16. Décisions arrêtées (2026-09-11)
 
-1. **Nom.** « Regard » est provisoire. Autre idée ?
-2. **Emplacement du dépôt.** Créé pour l'instant en `~/Projets/regard` sur le Mac ; il devra vivre et tourner sur w-agent. On le déplace/clone où exactement là-bas ?
-3. **Accès distant préféré :** SSH depuis une appli iPhone, session Claude Code distante, ou les deux ?
-4. **Bibliothèque CDP :** Playwright `connectOverCDP` (recommandé) ou `puppeteer-core` minimal ?
+1. **Nom :** **Scry**.
+2. **Emplacement :** code dans **`~/scry/`** sur w-agent, données dans **`~/scry-donnees/`**, les deux **hors du dossier Syncthing** `~/projets` (voir §10). Brouillon de design rédigé côté Mac en `~/Projets/scry/` ; l'outil vit et tourne sur w-agent.
+3. **Accès distant :** **les deux** — SSH par clés depuis une appli iPhone, et session Claude Code distante.
+4. **Bibliothèque CDP :** **Playwright en `connectOverCDP`** (voir §14).
+
+Reste à confirmer au déploiement : le chemin exact retenu sur w-agent, et la disponibilité du nom `scry` côté npm.
