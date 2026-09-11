@@ -62,8 +62,11 @@ mkdir -p ~/scry-donnees
 Créer `~/scry-donnees/scry.env` (jamais commité — hors git et hors
 `~/projets`). `scry-mcp.sh` le source **sur w-agent**, donc rien ne
 touche le Mac. **Mettre une vraie valeur dans `SCRY_LIVE_SECRET`** (pas
-de chevrons `<...>` : sourcé par bash, `<` casserait le lancement — le
-launcher refuse d'ailleurs de démarrer si le secret est vide) :
+de chevrons `<...>` : sourcé par bash, `<` casserait le lancement). Tant
+qu'il vaut `CHANGE_ME` ou reste vide, la vue live est **désactivée** (le
+placeholder n'est jamais utilisé comme clé HMAC — sinon les jetons
+seraient falsifiables) et `scry-mcp.sh` le signale sur stderr ; la
+perception et l'action, elles, marchent quand même :
 
 ```
 SCRY_CDP_URL=http://127.0.0.1:9222
@@ -154,32 +157,31 @@ correspond) :
 `crm.wautomatisations.com` — la seconde est morte, première-qui-gagne.
 Ne rien y toucher ici.)
 
-**6.3 — Recharger SANS coupure (relais).** `cloudflared` est un service
-**système** sans `ExecReload` : ni `systemctl --user reload`, ni
-`kill -HUP` ne rechargent l'ingress. Le patron zéro-coupure (celui déjà
-utilisé sur w-agent) est un **relais** — un second connecteur du **même**
-tunnel prend le relais pendant que l'unité redémarre avec le nouveau
-fichier :
+**6.3 — Recharger SANS coupure (bascule entre les deux connecteurs).**
+`cloudflared` est un service **système** sans `ExecReload` : ni
+`systemctl --user reload`, ni `kill -HUP` ne rechargent l'ingress. Mais
+**deux** connecteurs servent déjà le même tunnel `w-tradingbot`, chacun
+depuis `~/.cloudflared/config.yml` :
+
+- `cloudflared.service` — système (`sudo`) ;
+- `mega-dashboard-tunnel.service` — `--user`.
+
+Chacun ne lit le fichier qu'à **son** démarrage. Il faut donc redémarrer
+**les deux** pour qu'ils prennent la règle scry — mais **l'un après
+l'autre**, jamais ensemble : pendant qu'un connecteur redémarre, l'autre
+porte le trafic, et le tunnel ne tombe jamais.
 
 ```
-# 1. démarrer un réplica temporaire avec le nouveau config
-/home/will/.local/bin/cloudflared --config ~/.cloudflared/config.yml tunnel run w-tradingbot &
-REPLICA=$!
-sleep 6                       # laisser le réplica enregistrer ses connexions
-# 2. redémarrer l'unité (elle relit le config, incluant la règle scry)
-sudo systemctl restart cloudflared
-sleep 4
-# 3. retirer le réplica une fois l'unité revenue
-kill "$REPLICA"
+sudo systemctl restart cloudflared               # connecteur 1
+sleep 6                                            # le laisser se reconnecter
+systemctl --user restart mega-dashboard-tunnel    # connecteur 2
 ```
 
-Comme les deux processus servent le même tunnel, Cloudflare route par le
-réplica pendant le redémarrage : aucun trou public.
-
-**Repli** si le relais n'est pas possible : `sudo systemctl restart
-cloudflared` seul — `Restart=always` le relève en quelques secondes,
-mais coupe **brièvement** tous les services le temps de la reconnexion.
-**Ne jamais** couper `cloudflared` sans relais ni sans accepter ce blip.
+⚠️ **Ne jamais n'en redémarrer qu'un seul** : l'autre continuerait de
+servir l'**ancien** ingress (sans scry) et, Cloudflare répartissant le
+trafic sur les deux, scry répondrait **par intermittence** en 404. (Si
+`mega-dashboard-tunnel` n'existe plus, le seul redémarrage système
+suffit — mais vérifier `pgrep -af cloudflared` avant.)
 
 **6.4 — Vérifier :**
 
@@ -189,9 +191,10 @@ curl -sI https://scry.wautomatisations.com/ | head -1
 
 `200` (la page de vue live répond — le chemin atteint bien Scry ; c'est
 une page inerte, ce sont les *images* qui sont protégées par jeton) =
-**OK**. `502` = le backend 9400 n'écoute pas encore (aucune session
-Claude n'a appelé `live_start`, ou le serveur n'est pas lancé). `530`/`404`
-= la route DNS ou l'ingress n'est pas prise.
+**OK**. `502` = le backend 9400 n'écoute pas : aucune session Scry n'est
+active (le serveur, lancé par la session, écoute dès son démarrage et
+jusqu'à la fin de session). `530`/`404` = la route DNS ou l'ingress
+n'est pas prise.
 
 ## 7. Acceptation (fait par William, connexion comprise)
 
@@ -199,7 +202,9 @@ Depuis une session Claude branchée sur Scry (étape 5) :
 
 1. Appeler l'outil `live_start` → il renvoie un lien signé qui expire
    (directement sur `https://scry.wautomatisations.com/...` grâce à
-   `SCRY_LIVE_PUBLIC_URL`). La vue live démarre à ce moment-là.
+   `SCRY_LIVE_PUBLIC_URL`). Le serveur de vue live écoute déjà depuis le
+   début de la session ; `live_start` mint le lien (et le ré-ouvre après
+   un `live_stop`).
 2. Ouvrir ce lien sur l'iPhone → une page qui montre, en direct, Chrome
    tournant sur w-agent.
 3. Naviguer vers Timeliner. Quand le mur de connexion apparaît :

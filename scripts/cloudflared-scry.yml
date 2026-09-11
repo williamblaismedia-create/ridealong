@@ -14,5 +14,8 @@
 # --- Ajouter dans ~/.cloudflared/config.yml, dans la liste "ingress:", AVANT la regle 404 finale ---
   - hostname: scry.wautomatisations.com
     service: http://127.0.0.1:9400
-# Recharger SANS couper les autres tunnels :  systemctl --user reload cloudflared   (ou kill -HUP)
-# NE PAS faire  systemctl restart cloudflared  (couperait marketis et les autres).
+# Recharger SANS couper les autres tunnels : PAS de reload/HUP (cloudflared est
+# un service systeme sans ExecReload). DEUX connecteurs servent w-tradingbot
+# depuis ce meme fichier (cloudflared.service systeme + mega-dashboard-tunnel
+# --user) : les redemarrer L'UN APRES L'AUTRE (jamais ensemble) — voir le
+# carnet DEPLOIEMENT-W-AGENT.md §6.3. N'en redemarrer qu'un => 404 intermittents.
