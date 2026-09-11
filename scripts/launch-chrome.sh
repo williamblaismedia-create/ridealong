@@ -18,19 +18,35 @@ set -euo pipefail
 DISPLAY_NUM=99
 DISPLAY_ADDR=":${DISPLAY_NUM}"
 X_SOCKET="/tmp/.X11-unix/X${DISPLAY_NUM}"
+X_LOCK="/tmp/.X${DISPLAY_NUM}-lock"
 PROFILE_DIR="${HOME}/scry-donnees/profile"
 
-# --- Xvfb: start it only if display :99 isn't already up. Guarding on the
-# socket file makes this script safe to re-run by hand (e.g. after a
-# manual restart) without spawning a second, conflicting Xvfb. -------------
-if [ ! -e "${X_SOCKET}" ]; then
-  Xvfb "${DISPLAY_ADDR}" -screen 0 1440x900x24 &
+# --- Is display :99 actually SERVING? -------------------------------------
+# Guarding on the socket FILE was a trap: an unclean Xvfb death leaves the
+# socket behind, the old guard then skipped Xvfb, Chrome couldn't open the
+# display, exited, and systemd (Restart=always) crash-looped in silence.
+# Probe liveness instead: xdpyinfo when present (authoritative), else a
+# live Xvfb process on this display.
+display_up() {
+  if command -v xdpyinfo >/dev/null 2>&1; then
+    xdpyinfo -display "${DISPLAY_ADDR}" >/dev/null 2>&1
+  else
+    pgrep -f "Xvfb ${DISPLAY_ADDR}([[:space:]]|\$)" >/dev/null 2>&1
+  fi
+}
 
-  # Bounded wait for the X socket to appear before Chrome tries to attach
-  # to it, instead of a fixed sleep: usually near-instant, but this avoids
-  # a race on a slow/cold boot without slowing down the common case.
+if ! display_up; then
+  # No live server: clear any stale socket/lock from an unclean death,
+  # then start a fresh Xvfb. -nolisten tcp: the framebuffer never opens a
+  # TCP port (local X only).
+  rm -f "${X_SOCKET}" "${X_LOCK}" 2>/dev/null || true
+  Xvfb "${DISPLAY_ADDR}" -screen 0 1440x900x24 -nolisten tcp &
+
+  # Bounded wait for the display to actually answer (not just for the
+  # socket file to appear) before Chrome attaches — near-instant usually,
+  # but avoids a cold-boot race without slowing the common case.
   for _ in {1..50}; do
-    [ -e "${X_SOCKET}" ] && break
+    display_up && break
     sleep 0.1
   done
 fi
@@ -46,9 +62,21 @@ mkdir -p "${PROFILE_DIR}"
 # debug port is never exposed to the network; only the local Scry server
 # connects to it). `exec` replaces this script's own process with Chrome's,
 # so systemd (Restart=always in scry-chrome.service) supervises Chrome
-# itself rather than a wrapper shell. ---------------------------------------
+# itself rather than a wrapper shell.
+#
+# --password-store=basic is LOAD-BEARING: on Linux, Chrome encrypts the
+# cookie store with a key from whichever backend it auto-picks (gnome
+# keyring, kwallet, or basic). If that choice differs between runs — which
+# it can, headless-of-a-keyring on a server — the stored cookies become
+# undecryptable and William's persistent sessions VANISH, the one thing
+# this host exists to keep. Pinning "basic" makes the key choice stable.
+#
+# --window-size=1440,900 matches the driver's fixed viewport, but the
+# window includes toolbar chrome, so the content area is a little shorter;
+# check at acceptance that the live cast isn't cropped/letterboxed.
 exec google-chrome \
   --user-data-dir="${PROFILE_DIR}" \
+  --password-store=basic \
   --remote-debugging-port=9222 \
   --remote-debugging-address=127.0.0.1 \
   --no-first-run \

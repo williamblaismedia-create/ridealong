@@ -35,8 +35,9 @@ scry/
     live-view.test.ts
   scripts/
     launch-chrome.sh     # NEW: Xvfb + Google Chrome, persistent profile, local CDP
-    scry-chrome.service  # NEW: systemd user unit for the Chrome host
-    scry-server.service  # NEW: systemd user unit for the MCP + live-view server
+    scry-chrome.service  # NEW: systemd user unit for the Chrome host (the ONLY daemon)
+    scry-mcp.sh          # NEW (ruling d411ca2): per-session launcher — sources scry.env on w-agent, execs the stdio server. Replaces scry-server.service.
+    scry-mcp-client.example.json # NEW (ruling d411ca2): MCP client config, both launch paths (SSH / local)
     cloudflared-scry.yml # NEW: tunnel route snippet for the live link (documented)
   docs/
     DEPLOIEMENT-W-AGENT.md  # NEW: the runbook (deploy + login acceptance)
@@ -141,13 +142,21 @@ Not locally verifiable (needs Xvfb + Google Chrome on Linux). Deliver as reviewe
 
 ---
 
-## Task 6 (w-agent, files — executed WITH William): server unit + tunnel route
+## Task 6 (w-agent, files — executed WITH William): session launcher + tunnel route
 
-**Files:** Create `scripts/scry-server.service`, `scripts/cloudflared-scry.yml`.
+> **Ruling d411ca2 + final review (C3/M1):** the MCP server speaks stdio to one
+> client (spec §5.2), reached per session by SSH keys or a remote Claude Code
+> session (§5.9) — so there is **no server systemd unit**. A stdio server held as
+> a daemon has no client on its stdin and would idle/crash-loop. Chrome
+> (`scry-chrome.service`) is the only always-on unit. `scry-server.service` was
+> removed; `scry-mcp.sh` + `scry-mcp-client.example.json` replace it.
 
-- [ ] `scry-server.service`: systemd user unit running the Scry MCP + live-view server, `EnvironmentFile=~/scry-donnees/scry.env` (holds `SCRY_CDP_URL`, `SCRY_DATA_DIR`, the live-view `secret`), `Restart=always`.
-- [ ] `cloudflared-scry.yml`: a documented **ingress rule** for the existing `~/.cloudflared/config.yml`, inserted BEFORE the catch-all 404 (like the marketis rule), routing a hostname (e.g. `scry.wautomatisations.com`) to the local live-view port. Note: reload via SIGHUP, never `systemctl restart cloudflared` (would drop the other tunnels).
-- [ ] Commit `chore(host): server systemd unit + cloudflared ingress snippet`.
+**Files:** Create `scripts/scry-mcp.sh`, `scripts/scry-mcp-client.example.json`, `scripts/cloudflared-scry.yml`.
+
+- [ ] `scry-mcp.sh`: per-session launcher — resolves `node` robustly (`SCRY_NODE` → `command -v node` → `~/.local/node/bin/node`; **never** `/usr/bin/node`, absent on w-agent), sources `~/scry-donnees/scry.env` (`SCRY_CDP_URL`, `SCRY_DATA_DIR`, `SCRY_LIVE_PORT`, `SCRY_LIVE_SECRET`, `SCRY_LIVE_PUBLIC_URL`) on w-agent, then `exec`s the stdio server. Writes nothing to stdout.
+- [ ] `scry-mcp-client.example.json`: MCP client config for both launch paths — SSH from the Mac/iPhone (`command: ssh`, args include `-o BatchMode=yes`) and local on w-agent.
+- [ ] `cloudflared-scry.yml`: a documented **ingress rule** for the existing `~/.cloudflared/config.yml`, inserted BEFORE the catch-all 404 (like the marketis rule), routing `scry.wautomatisations.com` → `http://127.0.0.1:9400`. **Reload safely:** `cloudflared` is a **system** unit (`w-tradingbot`, no `ExecReload`); a config change needs a DNS route (`cloudflared tunnel route dns w-tradingbot …`) plus a **replica hand-off** (never a bare `systemctl restart` that drops crm/booking/reels/bridge/tableau/marketis). See the runbook §6.
+- [ ] Commit `chore(host): session launcher + cloudflared ingress snippet`.
 
 ---
 
@@ -157,9 +166,9 @@ Not locally verifiable (needs Xvfb + Google Chrome on Linux). Deliver as reviewe
 
 The runbook, then the login-gated acceptance that only William can complete:
 
-- [ ] Clone/pull scry to `~/scry` on w-agent (OUTSIDE the Syncthing `~/projets` tree, per the spec's data-hors-sync ruling); `npm ci`; `npx playwright install chromium` (dev) but the host uses system Google Chrome.
-- [ ] Create `~/scry-donnees/scry.env` with the live-view `secret` (generated once, never in git).
-- [ ] `systemctl --user enable --now scry-chrome scry-server`; insert the cloudflared ingress rule; SIGHUP cloudflared.
+- [ ] Clone/pull scry to `~/scry` on w-agent (OUTSIDE the Syncthing `~/projets` tree, per the spec's data-hors-sync ruling — note `~/projets/scry` also exists via Syncthing and must NEVER be built or run from); `npm ci`; `npm run build`. Host uses system Google Chrome.
+- [ ] Create `~/scry-donnees/scry.env` with the live-view `secret` (generated once, never in git) and `SCRY_LIVE_PUBLIC_URL=https://scry.wautomatisations.com` so the minted link is directly openable.
+- [ ] `systemctl --user enable --now scry-chrome` (the only daemon); wire Claude to Scry via the MCP client config (`scry-mcp.sh`, launched per session); add the cloudflared ingress rule + DNS route + replica hand-off reload (runbook §6).
 - [ ] **Acceptance (William):** open the signed live link on the iPhone → it shows Chrome on w-agent. Navigate to Timeliner; when the login wall appears, switch to input mode and **log in yourself** (or approve a Google passkey on the phone). Back to read mode. Then, from a Claude session that reaches w-agent, drive Scry to capture the first Timeliner screen (snapshot + screenshot + a thumbnail via `fetch_with_session`) — proving the whole loop, the Mac untouched.
 
 ---
