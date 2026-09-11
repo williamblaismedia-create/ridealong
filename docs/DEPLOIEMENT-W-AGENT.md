@@ -187,8 +187,10 @@ mais coupe **brièvement** tous les services le temps de la reconnexion.
 curl -sI https://scry.wautomatisations.com/ | head -1
 ```
 
-`426 Upgrade Required` (une session live est ouverte, le chemin atteint
-bien le serveur ws) ou `502` (aucune session live) = **OK**. `530`/`404`
+`200` (la page de vue live répond — le chemin atteint bien Scry ; c'est
+une page inerte, ce sont les *images* qui sont protégées par jeton) =
+**OK**. `502` = le backend 9400 n'écoute pas encore (aucune session
+Claude n'a appelé `live_start`, ou le serveur n'est pas lancé). `530`/`404`
 = la route DNS ou l'ingress n'est pas prise.
 
 ## 7. Acceptation (fait par William, connexion comprise)
