@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { CDPSession } from 'playwright';
 import type { Driver } from './driver.js';
@@ -53,11 +54,12 @@ export function verifyToken(secret: string, token: string): boolean {
  */
 export class LiveView {
   private server: WebSocketServer | undefined;
+  private httpServer: Server | undefined;
   private port = 0;
   private sessions = new Map<WebSocket, CDPSession>();
   private mode: 'read' | 'input' = 'read';
 
-  constructor(private driver: Driver, private opts: { secret: string }) {}
+  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string }) {}
 
   /** Switch between read-only streaming and hand-the-wheel input relay. */
   setMode(mode: 'read' | 'input'): void {
@@ -90,25 +92,68 @@ export class LiveView {
   async ensureStarted(port?: number): Promise<void> {
     if (this.server) return;
     const bindPort = port ?? this.port;
-    const wss = new WebSocketServer({ host: '127.0.0.1', port: bindPort });
+
+    // We own the HTTP server (rather than letting ws create its own) so that
+    // non-upgrade GETs get the viewer page instead of ws's canned "426 Upgrade
+    // Required" (C2). ws attaches its upgrade handler to it via { server }.
+    const httpServer = createServer((req, res) => this.serveViewer(req, res));
+    const wss = new WebSocketServer({ server: httpServer });
     this.server = wss;
+    this.httpServer = httpServer;
 
     wss.on('connection', (ws, req) => {
       void this.handleConnection(ws, req);
     });
 
     await new Promise<void>((resolve, reject) => {
-      wss.once('listening', () => resolve());
-      wss.once('error', (err) => {
+      const cleanup = () => {
+        httpServer.removeListener('listening', onListening);
+        httpServer.removeListener('error', onError);
+        wss.removeListener('error', onError);
+      };
+      const onListening = () => { cleanup(); resolve(); };
+      const onError = (err: Error) => {
         // Failed to bind (e.g. EADDRINUSE from a stale process): drop the
-        // half-bound handle so the object can be retried, and let the caller
-        // (main()) degrade to a core server without live_* tools.
+        // half-bound handles so the object can be retried, and let the caller
+        // (main()) degrade to a core server without live_* tools. ws re-emits
+        // the underlying server's error on the WebSocketServer too, so listen
+        // on both or the re-emit is an uncaught 'error' that kills the process.
+        cleanup();
         this.server = undefined;
+        this.httpServer = undefined;
         reject(err);
-      });
+      };
+      httpServer.once('listening', onListening);
+      httpServer.once('error', onError);
+      wss.once('error', onError);
+      httpServer.listen(bindPort, '127.0.0.1');
     });
 
+    // Running phase: keep a benign server-level error handler so a stray late
+    // error (ws re-emits socket/server errors on the wss) can't crash the MCP
+    // process. Per-connection errors are handled in handleConnection. (n2: a
+    // later server-level error is swallowed here rather than surfaced.)
+    wss.on('error', () => {});
+    httpServer.on('error', () => {});
+
     this.port = bindPort;
+  }
+
+  /**
+   * Serve the inert viewer page on any non-upgrade GET. Serving it
+   * UNAUTHENTICATED is fine (C2): the page is static and does nothing on its
+   * own; the screencast FRAMES are what the token gates, over the websocket.
+   * The page reads the token from its URL fragment (never sent to this server,
+   * so it stays out of access logs — n4) and opens the ws with it.
+   */
+  private serveViewer(req: IncomingMessage, res: ServerResponse): void {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('method not allowed');
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(req.method === 'HEAD' ? undefined : VIEWER_HTML);
   }
 
   private async handleConnection(ws: WebSocket, req: import('node:http').IncomingMessage): Promise<void> {
@@ -177,7 +222,13 @@ export class LiveView {
     });
 
     cdp.on('Page.screencastFrame', async (f) => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ data: f.data }));
+      if (ws.readyState === ws.OPEN) {
+        // Frame payload for the viewer page: the JPEG, the frame's CSS-pixel
+        // dimensions (so the page can map a click back to CDP coordinates),
+        // and the current mode (so the page shows read vs input). This is
+        // read-mode/server->client data only — no input is ever echoed here.
+        ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode }));
+      }
       try {
         await cdp!.send('Page.screencastFrameAck', { sessionId: f.sessionId });
       } catch {
@@ -186,9 +237,20 @@ export class LiveView {
     });
   }
 
-  url(ttlSec = 300): string {
+  url(ttlSec?: number): string {
     if (!this.server) throw new Error('vue live non demarree');
-    return `http://127.0.0.1:${this.port}/?token=${mintToken(this.opts.secret, ttlSec)}`;
+    // TTL bounds (m4): default 900s — a Google passkey/2FA login can exceed
+    // 5 min. Clamp to [30, 3600] so no caller can mint a practically permanent
+    // link (ttlSec huge) or an already-dead one (negative). The tool layer
+    // validates too; this is defence in depth for any direct caller.
+    const ttl = Math.min(3600, Math.max(30, Math.floor(ttlSec ?? 900)));
+    const token = mintToken(this.opts.secret, ttl);
+    // Public tunnel base when configured (m6), else loopback. The token rides
+    // in the URL fragment (n4): a fragment is never sent to the server, so it
+    // stays out of Cloudflare/HTTP access logs, and the page scrubs it from
+    // history on load.
+    const base = this.opts.publicUrl ?? `http://127.0.0.1:${this.port}`;
+    return `${base}/#token=${token}`;
   }
 
   /** Number of currently live (attached) screencast sessions. For tests/observability. */
@@ -198,10 +260,12 @@ export class LiveView {
 
   async stop(): Promise<void> {
     const wss = this.server;
+    const httpServer = this.httpServer;
     if (!wss) return; // idempotent: already stopped (a second live_stop resolves)
-    // Clear the handle up front so url() throws and ensureStarted() re-binds
+    // Clear the handles up front so url() throws and ensureStarted() re-binds
     // afterwards, and so a concurrent stop() is a no-op.
     this.server = undefined;
+    this.httpServer = undefined;
 
     for (const [ws, cdp] of this.sessions) {
       await cdp.send('Page.stopScreencast').catch(() => {});
@@ -213,5 +277,134 @@ export class LiveView {
     await new Promise<void>((resolve, reject) => {
       wss.close((err) => (err ? reject(err) : resolve()));
     });
+    // ws attached to our HTTP server, so ws.close() leaves it listening —
+    // close it too or the port stays bound and ensureStarted() can't re-bind.
+    if (httpServer) {
+      await new Promise<void>((resolve, reject) => {
+        httpServer.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
   }
 }
+
+/**
+ * The viewer page (C2, Spec §14 "page statique minimale"). Inert and safe to
+ * serve unauthenticated: it holds no secret and does nothing until it opens the
+ * token-gated websocket. It renders each `{data}` JPEG frame, shows the current
+ * mode, and — only in input mode — relays pointer/keyboard events as the
+ * `{t:'mouse'|'key', ...}` messages LiveView.handleConnection forwards to CDP
+ * Input.dispatch*. It NEVER writes the token or any keystroke to console.*.
+ */
+const VIEWER_HTML = `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Scry — vue live</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0d10; color: #e6e6e6;
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    background: #14181d; border-bottom: 1px solid #232a31; position: sticky; top: 0; }
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: #555; flex: 0 0 auto; }
+  #dot.on { background: #45d17a; }
+  #mode { font-weight: 600; }
+  #mode.read { color: #7fd1ff; }
+  #mode.input { color: #ffcf5c; }
+  #hint { color: #8a939b; margin-left: auto; }
+  #stage { display: flex; justify-content: center; padding: 8px; }
+  #screen { display: block; max-width: 100%; height: auto; background: #000;
+    touch-action: none; border-radius: 6px; -webkit-user-select: none; user-select: none; }
+  #kb { position: absolute; opacity: 0; width: 1px; height: 1px; border: 0; padding: 0; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <span id="dot"></span>
+    <span>mode : <span id="mode" class="read">…</span></span>
+    <span id="hint"></span>
+    <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="capture clavier">
+  </div>
+  <div id="stage"><img id="screen" alt="vue live"></div>
+<script>
+(function () {
+  // Token from the fragment only (never the query string), then scrub it from
+  // history immediately (n4). Never logged.
+  var token = new URLSearchParams((location.hash || '').replace(/^#/, '')).get('token') || '';
+  try { history.replaceState(null, document.title, location.pathname + location.search); } catch (e) {}
+
+  var img = document.getElementById('screen');
+  var modeEl = document.getElementById('mode');
+  var dot = document.getElementById('dot');
+  var hint = document.getElementById('hint');
+  var kb = document.getElementById('kb');
+  var frameW = 0, frameH = 0, mode = 'read';
+
+  var scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  var ws = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token));
+
+  ws.onopen = function () { dot.classList.add('on'); };
+  ws.onclose = function () { dot.classList.remove('on'); hint.textContent = 'deconnecte'; };
+  ws.onerror = function () { /* no payload logged */ };
+  ws.onmessage = function (ev) {
+    var msg; try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch (e) { return; }
+    if (!msg) return;
+    if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
+    if (typeof msg.data === 'string') {
+      if (msg.w) frameW = msg.w;
+      if (msg.h) frameH = msg.h;
+      img.src = 'data:image/jpeg;base64,' + msg.data;
+    }
+  };
+
+  function setMode(m) {
+    mode = m;
+    modeEl.textContent = m === 'input' ? 'passe-la-main (saisie relayee)' : 'lecture seule';
+    modeEl.className = m;
+    hint.textContent = m === 'input' ? 'vos clics/frappes vont au navigateur' : '';
+  }
+  setMode('read');
+
+  function send(obj) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+
+  // Map a client point over the <img> to the page CSS-pixel space CDP uses.
+  function toPage(cx, cy) {
+    var r = img.getBoundingClientRect();
+    if (!r.width || !r.height || !frameW || !frameH) return null;
+    return { x: Math.round((cx - r.left) / r.width * frameW), y: Math.round((cy - r.top) / r.height * frameH) };
+  }
+  function mods(e) { return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0); }
+
+  // Pointer events unify mouse + touch + pen (iOS Safari supports them), so one
+  // set of handlers covers the iPhone. Relayed only in input mode.
+  function mouse(type, e) {
+    if (mode !== 'input') return;
+    var p = toPage(e.clientX, e.clientY);
+    if (p) send({ t: 'mouse', type: type, x: p.x, y: p.y, button: 'left', clickCount: 1, modifiers: mods(e) });
+  }
+  img.addEventListener('pointerdown', function (e) { e.preventDefault(); mouse('mousePressed', e); });
+  img.addEventListener('pointerup', function (e) { e.preventDefault(); mouse('mouseReleased', e); if (mode === 'input') { try { kb.focus(); } catch (x) {} } });
+  img.addEventListener('pointermove', function (e) { if (mode === 'input') { e.preventDefault(); mouse('mouseMoved', e); } });
+
+  // Keyboard, captured at window level (covers a physical keyboard and the
+  // hidden #kb input that only exists to raise the mobile soft keyboard).
+  // A printable key carries its char as text on keyDown — that is what
+  // inserts it (the same shape Puppeteer uses); modifiers with ctrl/meta are
+  // treated as shortcuts (no text). keyUp mirrors it. Nothing is buffered.
+  window.addEventListener('keydown', function (e) {
+    if (mode !== 'input') return;
+    var text = (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) ? e.key : undefined;
+    send({ t: 'key', type: 'keyDown', key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, text: text, modifiers: mods(e) });
+    if (e.key !== 'F5') e.preventDefault();
+  });
+  window.addEventListener('keyup', function (e) {
+    if (mode !== 'input') return;
+    send({ t: 'key', type: 'keyUp', key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, modifiers: mods(e) });
+    e.preventDefault();
+  });
+})();
+</script>
+</body>
+</html>`;

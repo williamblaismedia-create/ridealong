@@ -13,6 +13,13 @@ describe('loadConfig', () => {
     // No live-view secret is ever invented — unset means live-view stays off.
     expect(c.secret).toBeUndefined();
     expect(c.liveViewPort).toBe(9400);
+    // No public URL is invented either — unset falls back to loopback in url().
+    expect(c.livePublicUrl).toBeUndefined();
+  });
+
+  it('reads SCRY_LIVE_PUBLIC_URL when set (m6)', () => {
+    const c = loadConfig({ SCRY_LIVE_PUBLIC_URL: 'https://scry.wautomatisations.com' });
+    expect(c.livePublicUrl).toBe('https://scry.wautomatisations.com');
   });
 
   it('expands a leading ~ in dataDir and reads overrides', () => {

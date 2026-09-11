@@ -72,7 +72,7 @@ export async function main(): Promise<void> {
   let liveView: LiveView | undefined;
   if (cfg.secret) {
     try {
-      liveView = new LiveView(driver, { secret: cfg.secret });
+      liveView = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl });
       await liveView.start(cfg.liveViewPort);
     } catch (e) {
       // A bind failure (stale process, restart race on an always-on host)

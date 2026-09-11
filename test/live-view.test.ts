@@ -29,6 +29,16 @@ describe('mintToken / verifyToken (pure)', () => {
   it('rejects malformed input', () => {
     expect(verifyToken(secret, 'garbage')).toBe(false);
   });
+
+  it('rejects a token whose exp was extended but mac left unchanged (the realistic forgery)', () => {
+    const token = mintToken(secret, 60);
+    const mac = token.split('.')[1];
+    // Push the expiry far into the future while keeping the mac that was
+    // computed over the ORIGINAL exp — the mac no longer matches, so verify
+    // must fail even though the exp alone would look fresh.
+    const forged = `${Math.floor(Date.now() / 1000) + 999999}.${mac}`;
+    expect(verifyToken(secret, forged)).toBe(false);
+  });
 });
 
 describe('LiveView (integration)', () => {
@@ -83,10 +93,16 @@ describe('LiveView (integration)', () => {
     return ws;
   }
 
+  // url() now returns the human-facing BROWSER link (#token, publicUrl-aware,
+  // n4/m6); the viewer page reads that fragment and opens the ws with the token
+  // in the query. Tests connect the ws directly, so they build the ws URL with
+  // the token in the query the way the page would.
+  const wsUrlFor = (port: number, ttlSec = 60) => `ws://127.0.0.1:${port}/?token=${mintToken(secret, ttlSec)}`;
+
   it('cleans up the CDP session if the client disconnects during/right after attach (no leak)', async () => {
     expect(live.sessionCount()).toBe(0);
 
-    const ws = new WebSocket(liveUrl());
+    const ws = new WebSocket(wsUrlFor(PORT));
     await new Promise<void>((resolve, reject) => {
       ws.on('open', () => resolve());
       ws.on('error', reject);
@@ -99,7 +115,7 @@ describe('LiveView (integration)', () => {
   });
 
   it('streams at least one screencast frame to a client with a valid token', async () => {
-    const ws = new WebSocket(liveUrl());
+    const ws = new WebSocket(wsUrlFor(PORT));
     await new Promise<void>((resolve, reject) => {
       ws.on('open', () => resolve());
       ws.on('error', reject);
@@ -143,7 +159,7 @@ describe('LiveView (integration)', () => {
   });
 
   it('closes the connection when the token is expired', async () => {
-    const expiredUrl = liveUrl(-1);
+    const expiredUrl = `ws://127.0.0.1:${PORT}/?token=${mintToken(secret, -1)}`;
     const ws = new WebSocket(expiredUrl);
     const closeCode = await new Promise<number>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('timeout waiting for close')), 4000);
@@ -154,11 +170,63 @@ describe('LiveView (integration)', () => {
     expect(closeCode).toBe(1008);
   });
 
+  it('closes with 1008 when no token is supplied — a frame is never sent without a valid token (C2)', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/`);
+    const code = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout waiting for close')), 4000);
+      ws.on('close', (c) => { clearTimeout(timer); resolve(c); });
+      ws.on('message', () => { clearTimeout(timer); reject(new Error('frame sent without a token')); });
+      ws.on('error', () => {});
+    });
+    expect(code).toBe(1008);
+  });
+
+  it('serves the inert viewer page on a plain GET without a token — HTML, not 426 (C2)', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/`);
+    expect(res.status).toBe(200);
+    expect(res.status).not.toBe(426);
+    expect(res.headers.get('content-type')).toMatch(/text\/html/);
+    const body = await res.text();
+    expect(body).toContain('id="screen"');   // the frame surface
+    expect(body).toContain('Scry');           // the page identifies itself
+    // Inert: no real minted token is baked into the served page (it reads one
+    // from the fragment at runtime, which never reaches this server). The JS
+    // string literal "token=" is fine; a minted token value would not be.
+    expect(body).not.toMatch(/#token=\d+\.[0-9a-f]{16,}/);
+  });
+
+  it('url() returns a #token browser link (n4), never a ?token query', () => {
+    const link = live.url();
+    expect(link).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${PORT}/#token=\\d+\\.[0-9a-f]+$`));
+    expect(link).not.toContain('?token=');
+  });
+
+  it('url() clamps ttl to [30, 3600] and defaults to ~900 (m4)', () => {
+    const expOf = (link: string) => Number(link.split('#token=')[1].split('.')[0]);
+    const now = () => Math.floor(Date.now() / 1000);
+    expect(expOf(live.url()) - now()).toBeGreaterThan(870);        // default 900
+    expect(expOf(live.url()) - now()).toBeLessThanOrEqual(900);
+    expect(expOf(live.url(5)) - now()).toBeGreaterThanOrEqual(29); // clamped up to 30
+    expect(expOf(live.url(5)) - now()).toBeLessThanOrEqual(31);
+    expect(expOf(live.url(999999)) - now()).toBeLessThanOrEqual(3600); // clamped down
+    expect(expOf(live.url(999999)) - now()).toBeGreaterThan(3560);
+  });
+
+  it('url() mints from SCRY_LIVE_PUBLIC_URL when set (m6)', async () => {
+    const lv = new LiveView(driver, { secret, publicUrl: 'https://scry.example.com' });
+    await lv.start(9407);
+    try {
+      expect(lv.url()).toMatch(/^https:\/\/scry\.example\.com\/#token=\d+\.[0-9a-f]+$/);
+    } finally {
+      await lv.stop();
+    }
+  });
+
   it('read mode (the default) ignores an input message — no effect on the page', async () => {
     live.setMode('read');
     await driver.page().evaluate(() => { (document.getElementById('name') as HTMLInputElement).value = ''; });
 
-    const ws = await connectAttached(liveUrl());
+    const ws = await connectAttached(wsUrlFor(PORT));
     ws.send(JSON.stringify({ t: 'key', type: 'char', text: 'z' }));
     await new Promise((r) => setTimeout(r, 300));
 
@@ -178,7 +246,7 @@ describe('LiveView (integration)', () => {
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
 
-    const ws = await connectAttached(liveUrl());
+    const ws = await connectAttached(wsUrlFor(PORT));
 
     // Distinctive string, unlikely to appear anywhere else in LiveView's own
     // state — the no-capture assertion below checks for exactly this text.
@@ -214,7 +282,7 @@ describe('LiveView (integration)', () => {
     live.setMode('read');
     await driver.page().evaluate(() => { (document.getElementById('name') as HTMLInputElement).value = ''; });
 
-    const ws = await connectAttached(liveUrl());
+    const ws = await connectAttached(wsUrlFor(PORT));
     ws.send(JSON.stringify({ t: 'key', type: 'char', text: 'z' }));
     await new Promise((r) => setTimeout(r, 300));
 
@@ -236,7 +304,7 @@ describe('LiveView (integration)', () => {
     // Between stop and restart the link is dead, not a URL to a closed port.
     expect(() => lv.url()).toThrow(/vue live non demarree/);
     await lv.ensureStarted(); // what live_start does after a live_stop
-    const ws = await connectAttached(lv.url());
+    const ws = await connectAttached(wsUrlFor(9404));
     expect(ws.readyState).toBe(WebSocket.OPEN);
     ws.close();
     await lv.stop();
@@ -255,9 +323,37 @@ describe('LiveView (integration)', () => {
     const b = new LiveView(driver, { secret });
     await expect(b.start(9406)).rejects.toBeTruthy();
     // The first instance is unaffected and still streams to a token-holder.
-    const ws = await connectAttached(a.url());
+    const ws = await connectAttached(wsUrlFor(9406));
     expect(ws.readyState).toBe(WebSocket.OPEN);
     ws.close();
     await a.stop();
+  });
+
+  // Runs the ACTUAL viewer-page JS in a real browser (it is never type-checked,
+  // so a syntax slip would otherwise ship silently). Loads the served page with
+  // a token in the fragment and asserts: the JS runs top-to-bottom with no
+  // page error, it scrubs the token out of the URL (n4), and it opens the
+  // token-gated websocket. Kept last so the viewer tab it foregrounds can't
+  // starve an earlier frame-dependent test of screencast frames.
+  it('the served viewer page runs, scrubs its #token (n4), and opens the ws (C2)', async () => {
+    const lv = new LiveView(driver, { secret });
+    await lv.start(9409);
+    const viewer = await driver.context().newPage();
+    const errors: string[] = [];
+    viewer.on('pageerror', (e) => errors.push(String(e)));
+    viewer.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      const link = `http://127.0.0.1:9409/#token=${mintToken(secret, 60)}`;
+      await viewer.goto(link, { waitUntil: 'domcontentloaded' });
+      // ws.onopen flips the status dot to green; wait for that as proof the
+      // token made it from the fragment into the query and was accepted.
+      await viewer.waitForFunction(() => document.getElementById('dot')?.classList.contains('on'), { timeout: 8000 });
+      expect(await viewer.evaluate(() => location.hash)).toBe(''); // scrubbed
+      expect(errors).toEqual([]);
+    } finally {
+      await viewer.close();
+      await driver.page().bringToFront().catch(() => {});
+      await lv.stop();
+    }
   });
 });

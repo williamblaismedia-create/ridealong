@@ -75,9 +75,9 @@ describe('buildServer with a liveView', () => {
     expect(names).toContain('live_stop');
   });
 
-  it('live_start returns a signed URL for the live view', async () => {
+  it('live_start returns a signed #token URL for the live view', async () => {
     const out = await serverWithLive.callTool('live_start', {});
-    expect(out).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${LIVE_PORT}/\\?token=\\d+\\.[0-9a-f]+$`));
+    expect(out).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${LIVE_PORT}/#token=\\d+\\.[0-9a-f]+$`));
   });
 
   it('live_mode flips the LiveView mode', async () => {
