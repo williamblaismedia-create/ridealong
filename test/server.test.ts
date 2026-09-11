@@ -88,6 +88,16 @@ describe('buildServer with a liveView', () => {
     expect(liveView.getMode()).toBe('read');
   });
 
+  it('suspends perception (snapshot/find/read/screenshot) while in input mode, resumes in read (M4, Spec §5.8)', async () => {
+    await serverWithLive.callTool('live_mode', { mode: 'input' });
+    for (const [name, args] of [['snapshot', {}], ['find', { query: 'x' }], ['read', {}], ['screenshot', {}]] as const) {
+      await expect(serverWithLive.callTool(name, args)).rejects.toThrow(/perception suspendue \(spec §5\.8\)/);
+    }
+    // Back in read mode, perception works again — the gate is dynamic.
+    await serverWithLive.callTool('live_mode', { mode: 'read' });
+    expect(await serverWithLive.callTool('snapshot', {})).toMatch(/^\[state\] url=/);
+  });
+
   it('live_stop tears down its live view (no leaked sessions)', async () => {
     // Scoped to its own LiveView/port so stopping it doesn't affect the
     // shared instance the other tests in this block still use.

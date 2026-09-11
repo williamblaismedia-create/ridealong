@@ -2,6 +2,18 @@ import type { Page, Locator } from 'playwright';
 
 export interface RefNode { ref: string; role: string; name: string; level: number; nth: number }
 
+// SECURITY INVARIANT (Spec §5.8, constraint 1 — "aucun canal pour livrer un
+// secret à Claude"). The aria-snapshot "colon value" of an editable control is
+// USER-ENTERED CONTENT, not a label: for a password / one-time-code field it is
+// the secret itself. Playwright 1.63 DOES render it — verified:
+// `- textbox: hunter2` for an unlabelled field, `- textbox "Pass": hunter2`
+// for a labelled one. For these roles parseAriaLine must NEVER promote that
+// value into the ref name, or it would flow to Claude through snapshot/find and
+// onto disk through the artifact store. This is not incidental parser
+// behaviour — it is a guard. Do not relax it without re-checking the filled
+// password-field test in test/refs.test.ts.
+const VALUE_BEARING_ROLES = new Set(['textbox', 'searchbox', 'spinbutton']);
+
 // NOTE: the installed Playwright (1.63.x, satisfying package.json's ^1.47.0) has fully
 // removed `page.accessibility.snapshot()` at runtime (not just deprecated it) — see
 // task-4-report.md for the diagnostic. `locator.ariaSnapshot()` is the current
@@ -44,7 +56,11 @@ export function parseAriaLine(line: string): { role: string; name: string; level
     attrMatch = /^\s*\[[^\]]*\]/.exec(remainder);
   }
 
-  if (!name) {
+  // A quoted name always wins and the colon value is dropped. When there is no
+  // quoted name, the colon value normally IS the accessible name (e.g.
+  // `- paragraph: idle`) — except for value-bearing roles, where it is the
+  // user's typed content and must be dropped outright (the invariant above).
+  if (!name && !VALUE_BEARING_ROLES.has(role)) {
     const colonMatch = /^\s*:\s*(.*)$/.exec(remainder);
     if (colonMatch) name = colonMatch[1].trim();
   }

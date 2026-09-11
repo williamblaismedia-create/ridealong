@@ -27,6 +27,16 @@ describe('parseAriaLine', () => {
     expect(parseAriaLine('- paragraph: idle')).toEqual({ role: 'paragraph', name: 'idle', level: 0 });
   });
 
+  it('drops the colon-value for a value-bearing role (no-capture invariant) — a typed secret never becomes the name', () => {
+    // An unlabelled password/text field renders as `- textbox: <typed value>`;
+    // that value is user content, never a label, and must not leak into a ref.
+    expect(parseAriaLine('- textbox: NAKED-SECRET-42')).toEqual({ role: 'textbox', name: '', level: 0 });
+    expect(parseAriaLine('- searchbox: my query')).toEqual({ role: 'searchbox', name: '', level: 0 });
+    expect(parseAriaLine('- spinbutton: 42')).toEqual({ role: 'spinbutton', name: '', level: 0 });
+    // A quoted name still wins and the value is still dropped.
+    expect(parseAriaLine('- textbox "Pass": hunter2')).toEqual({ role: 'textbox', name: 'Pass', level: 0 });
+  });
+
   it('computes level from two-space indentation', () => {
     expect(parseAriaLine('  - listitem: alpha')).toEqual({ role: 'listitem', name: 'alpha', level: 1 });
   });

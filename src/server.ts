@@ -23,13 +23,27 @@ interface Tool { shape: Record<string, z.ZodTypeAny>; run: (args: any) => Promis
 export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveView }) {
   const { perception, action, network, liveView } = deps;
   const tabs = new Tabs(perception.driver);
+
+  // NO-CAPTURE (Spec §5.8, hard constraint): while the live view is in `input`
+  // mode, William is typing his own credentials into Chrome by hand. During
+  // that window Claude's perception tools MUST be suspended so the tool can't
+  // capture the keystrokes/values indirectly — a screenshot of a "show
+  // password" toggle, a snapshot/find/read of the field, a one-time code on
+  // screen. The relay itself already retains nothing (live-view.ts); this is
+  // the other half of the guarantee, on the perception side.
+  const refuseInputMode = (): void => {
+    if (liveView?.getMode() === 'input') {
+      throw new Error('vue live en mode input : perception suspendue (spec §5.8)');
+    }
+  };
+
   const tools: Record<string, Tool> = {
     navigate: { shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
     state: { shape: {}, run: async () => headerLine(await perception.state()) },
-    snapshot: { shape: { budget: z.number().optional() }, run: async (a) => { const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
-    find: { shape: { query: z.string() }, run: async (a) => { const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
-    read: { shape: { budget: z.number().optional() }, run: async (a) => { const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
-    screenshot: { shape: { fullPage: z.boolean().optional() }, run: async (a) => (await perception.screenshot(a)).summary },
+    snapshot: { shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
+    find: { shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
+    read: { shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
+    screenshot: { shape: { fullPage: z.boolean().optional() }, run: async (a) => { refuseInputMode(); return (await perception.screenshot(a)).summary; } },
     act: { shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
     fill: { shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await action.fill(a.fields); return headerLine(await perception.state()); } },
     scroll: { shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },

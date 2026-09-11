@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import WebSocket from 'ws';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { startBrowser } from './helpers.js';
 import { Driver } from '../src/driver.js';
 import { mintToken, verifyToken, LiveView } from '../src/live-view.js';
@@ -238,6 +241,15 @@ describe('LiveView (integration)', () => {
     await driver.page().evaluate(() => { (document.getElementById('name') as HTMLInputElement).value = ''; });
     const keysBefore = Object.keys(live as unknown as Record<string, unknown>).sort();
 
+    // Spy the three console sinks: a keystroke that reached any of them would
+    // defeat no-capture even without a retained field (m9c / M4.3).
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // A temp dir standing in for the artifact store: the relay owns no store,
+    // so nothing must ever be written here on account of the input.
+    const artifactDir = mkdtempSync(join(tmpdir(), 'scry-nocap-'));
+
     live.setMode('input');
     expect(live.getMode()).toBe('input');
 
@@ -249,7 +261,7 @@ describe('LiveView (integration)', () => {
     const ws = await connectAttached(wsUrlFor(PORT));
 
     // Distinctive string, unlikely to appear anywhere else in LiveView's own
-    // state — the no-capture assertion below checks for exactly this text.
+    // state — the no-capture assertions below check for exactly this text.
     const typed = 'q9zk7p';
     ws.send(JSON.stringify({ t: 'mouse', type: 'mousePressed', x, y, button: 'left', clickCount: 1 }));
     ws.send(JSON.stringify({ t: 'mouse', type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }));
@@ -266,16 +278,38 @@ describe('LiveView (integration)', () => {
     }
     expect(value).toBe(typed);
 
-    // NO-CAPTURE (Spec §5.8): relaying the input above must not have grown
-    // any new property on the LiveView instance — the shape a keystroke
-    // buffer/log would take — and the one string-valued field it owns
-    // (`mode`) never contains the typed text.
-    const keysAfter = Object.keys(live as unknown as Record<string, unknown>).sort();
-    expect(keysAfter).toEqual(keysBefore);
-    expect(live.getMode()).not.toContain(typed);
-
     live.setMode('read');
     ws.close();
+
+    // NO-CAPTURE (Spec §5.8). This must not be defeatable by a newly ADDED
+    // field, so we inspect CONTENTS, not just the key set:
+    // 1) key set unchanged (a retained buffer would add a property);
+    const keysAfter = Object.keys(live as unknown as Record<string, unknown>).sort();
+    expect(keysAfter).toEqual(keysBefore);
+    // 2) deep-walk every own enumerable prop except the driver/server/session
+    //    HANDLES (complex/circular by nature, and not capture surfaces), and
+    //    assert the serialized state never contains the typed text — this is
+    //    what a `log: string[]` or a stashed `lastMsg` would show up in;
+    const skip = new Set(['driver', 'server', 'httpServer', 'sessions']);
+    const own: Record<string, unknown> = {};
+    for (const k of Object.keys(live as unknown as Record<string, unknown>)) {
+      if (!skip.has(k)) own[k] = (live as unknown as Record<string, unknown>)[k];
+    }
+    expect(JSON.stringify(own)).not.toContain(typed);
+    // 3) nothing was logged to any console sink;
+    for (const spy of [logSpy, errSpy, warnSpy]) {
+      for (const call of spy.mock.calls) {
+        expect(JSON.stringify(call)).not.toContain(typed);
+      }
+    }
+    // 4) nothing hit disk.
+    for (const f of readdirSync(artifactDir)) {
+      expect(readFileSync(join(artifactDir, f), 'utf8')).not.toContain(typed);
+    }
+
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it('back in read mode, the same input message is ignored again (gating is dynamic, not one-shot)', async () => {
