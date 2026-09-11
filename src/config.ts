@@ -6,6 +6,9 @@ export interface Config {
   viewport: { width: number; height: number };
   defaultTimeoutMs: number;
   readBudgetChars: number;
+  /** SCRY_LIVE_SECRET. Required for the live view; no default is invented — unset means live-view stays off. */
+  secret: string | undefined;
+  liveViewPort: number;
 }
 
 function expandHome(p: string): string {
@@ -27,5 +30,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     defaultTimeoutMs: intOr(env.SCRY_DEFAULT_TIMEOUT_MS, 15000),
     readBudgetChars: intOr(env.SCRY_READ_BUDGET_CHARS, 8000),
+    secret: env.SCRY_LIVE_SECRET,
+    liveViewPort: intOr(env.SCRY_LIVE_PORT, 9400),
   };
 }

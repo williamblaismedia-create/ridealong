@@ -8,6 +8,7 @@ import { Perception, type StateHeader } from './perception.js';
 import { Action } from './action.js';
 import { Network } from './network.js';
 import { Tabs, type TabInfo } from './tabs.js';
+import { LiveView } from './live-view.js';
 
 function headerLine(s: StateHeader): string {
   return `[state] url=${s.url} title=${JSON.stringify(s.title)} ready=${s.ready} dialog=${s.dialogOpen}`;
@@ -19,8 +20,8 @@ function tabsLines(list: TabInfo[]): string {
 
 interface Tool { shape: Record<string, z.ZodTypeAny>; run: (args: any) => Promise<string> }
 
-export function buildServer(deps: { perception: Perception; action: Action; network: Network }) {
-  const { perception, action, network } = deps;
+export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveView }) {
+  const { perception, action, network, liveView } = deps;
   const tabs = new Tabs(perception.driver);
   const tools: Record<string, Tool> = {
     navigate: { shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
@@ -39,6 +40,12 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
     tabs_close: { shape: { id: z.number() }, run: async (a) => { await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
     tabs_select: { shape: { id: z.number() }, run: async (a) => { await tabs.select(a.id); return headerLine(await perception.state()); } },
   };
+
+  if (liveView) {
+    tools.live_start = { shape: { ttlSec: z.number().optional() }, run: async (a) => liveView.url(a.ttlSec) };
+    tools.live_mode = { shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
+    tools.live_stop = { shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
+  }
 
   const server = new McpServer({ name: 'scry', version: '0.1.0' });
   for (const [name, t] of Object.entries(tools)) {
@@ -61,7 +68,16 @@ export async function main(): Promise<void> {
   const network = new Network(driver, store); network.start();
   const perception = new Perception(driver, store, cfg.readBudgetChars);
   const action = new Action(driver, (ref) => perception.resolveRefNode(ref));
-  const server = buildServer({ perception, action, network });
+
+  let liveView: LiveView | undefined;
+  if (cfg.secret) {
+    liveView = new LiveView(driver, { secret: cfg.secret });
+    await liveView.start(cfg.liveViewPort);
+  } else {
+    console.error('[scry] SCRY_LIVE_SECRET absent : vue live desactivee.');
+  }
+
+  const server = buildServer({ perception, action, network, liveView });
   await server.connect(new StdioServerTransport());
 }
 

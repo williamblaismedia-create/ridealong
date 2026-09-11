@@ -10,6 +10,9 @@ describe('loadConfig', () => {
     expect(c.defaultTimeoutMs).toBe(15000);
     expect(c.readBudgetChars).toBe(8000);
     expect(c.dataDir).toBe(`${homedir()}/scry-donnees`);
+    // No live-view secret is ever invented — unset means live-view stays off.
+    expect(c.secret).toBeUndefined();
+    expect(c.liveViewPort).toBe(9400);
   });
 
   it('expands a leading ~ in dataDir and reads overrides', () => {
@@ -17,5 +20,11 @@ describe('loadConfig', () => {
     expect(c.dataDir).toBe(`${homedir()}/ailleurs`);
     expect(c.viewport.width).toBe(1280);
     expect(c.cdpUrl).toBe('http://127.0.0.1:9333');
+  });
+
+  it('reads SCRY_LIVE_SECRET and SCRY_LIVE_PORT', () => {
+    const c = loadConfig({ SCRY_LIVE_SECRET: 'shh', SCRY_LIVE_PORT: '9555' });
+    expect(c.secret).toBe('shh');
+    expect(c.liveViewPort).toBe(9555);
   });
 });
