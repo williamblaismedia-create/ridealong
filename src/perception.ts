@@ -18,7 +18,7 @@ export class Perception {
       title: await page.title(),
       viewport: vp,
       ready: await this.driver.evaluate(() => document.readyState === 'complete'),
-      dialogOpen: this.driver.dialogWasHandled(),
+      dialogOpen: this.driver.isDialogOpen(),
     };
   }
 

@@ -2,6 +2,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 
 export class Driver {
   private dialogHandled = false;
+  private dialogOpen = false;
 
   private constructor(private browser: Browser, private _page: Page) {}
 
@@ -12,8 +13,15 @@ export class Driver {
     await page.setViewportSize(opts.viewport);
     page.setDefaultTimeout(opts.defaultTimeoutMs);
     const driver = new Driver(browser, page);
-    // Native dialogs must never freeze the session: auto-dismiss, record that one appeared.
-    page.on('dialog', async (d) => { driver.dialogHandled = true; await d.dismiss().catch(() => {}); });
+    // Native dialogs must never freeze the session: auto-dismiss, record that one
+    // appeared, and track live open/closed state (dialogOpen is only true while a
+    // dialog is actually up — it must not stick true after dismissal).
+    page.on('dialog', async (d) => {
+      driver.dialogHandled = true;
+      driver.dialogOpen = true;
+      await d.dismiss().catch(() => {});
+      driver.dialogOpen = false;
+    });
     return driver;
   }
 
@@ -36,6 +44,8 @@ export class Driver {
   }
 
   dialogWasHandled(): boolean { return this.dialogHandled; }
+
+  isDialogOpen(): boolean { return this.dialogOpen; }
 
   async close(): Promise<void> { await this.browser.close(); }
 }

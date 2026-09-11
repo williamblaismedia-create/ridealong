@@ -30,5 +30,9 @@ describe('Driver', () => {
     // The Driver's page.on('dialog') handler dismisses the dialog, so this evaluate resolves instead of hanging.
     await driver.evaluate(() => { alert('boom'); });
     expect(driver.dialogWasHandled()).toBe(true);
+    // dialogOpen must reflect the CURRENT state: after the auto-dismiss settles it is
+    // false again — it must not stick to true forever after the first dialog.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(driver.isDialogOpen()).toBe(false);
   });
 });
