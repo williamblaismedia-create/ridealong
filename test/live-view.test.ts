@@ -221,4 +221,43 @@ describe('LiveView (integration)', () => {
     expect(await driver.page().locator('#name').inputValue()).toBe('');
     ws.close();
   });
+
+  // --- Lifecycle (M2): live_start -> live_stop -> live_start must keep working ---
+
+  it('url() throws when the view has not been started', () => {
+    const lv = new LiveView(driver, { secret });
+    expect(() => lv.url()).toThrow(/vue live non demarree/);
+  });
+
+  it('re-serves after stop then restart — url() is dead in between, a client streams after', async () => {
+    const lv = new LiveView(driver, { secret });
+    await lv.start(9404);
+    await lv.stop();
+    // Between stop and restart the link is dead, not a URL to a closed port.
+    expect(() => lv.url()).toThrow(/vue live non demarree/);
+    await lv.ensureStarted(); // what live_start does after a live_stop
+    const ws = await connectAttached(lv.url());
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+    await lv.stop();
+  });
+
+  it('stop() is idempotent — a second stop resolves without throwing', async () => {
+    const lv = new LiveView(driver, { secret });
+    await lv.start(9405);
+    await lv.stop();
+    await expect(lv.stop()).resolves.toBeUndefined();
+  });
+
+  it('a second bind on a busy port rejects while the first keeps serving (graceful degradation)', async () => {
+    const a = new LiveView(driver, { secret });
+    await a.start(9406);
+    const b = new LiveView(driver, { secret });
+    await expect(b.start(9406)).rejects.toBeTruthy();
+    // The first instance is unaffected and still streams to a token-holder.
+    const ws = await connectAttached(a.url());
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+    await a.stop();
+  });
 });

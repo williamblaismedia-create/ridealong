@@ -42,7 +42,7 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
   };
 
   if (liveView) {
-    tools.live_start = { shape: { ttlSec: z.number().optional() }, run: async (a) => liveView.url(a.ttlSec) };
+    tools.live_start = { shape: { ttlSec: z.number().optional() }, run: async (a) => { await liveView.ensureStarted(); return liveView.url(a.ttlSec); } };
     tools.live_mode = { shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
     tools.live_stop = { shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
   }
@@ -87,7 +87,26 @@ export async function main(): Promise<void> {
   }
 
   const server = buildServer({ perception, action, network, liveView });
-  await server.connect(new StdioServerTransport());
+
+  // Exit cleanly when the client goes away. Over SSH (the primary wiring),
+  // Claude Code kills the LOCAL ssh on shutdown; the remote node gets EOF on
+  // stdin and NO signal, so without this the process would linger forever —
+  // holding the live-view port and a CDP connection, which makes every later
+  // session hit EADDRINUSE and silently lose its live_* tools (C3). Cover all
+  // three: transport close, stdin EOF, and the usual termination signals.
+  const transport = new StdioServerTransport();
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await liveView?.stop().catch(() => {});
+    await driver.close().catch(() => {});
+    process.exit(0);
+  };
+  transport.onclose = () => void shutdown();
+  process.stdin.once('end', () => void shutdown());
+  for (const s of ['SIGTERM', 'SIGHUP', 'SIGINT'] as const) process.once(s, () => void shutdown());
+  await server.connect(transport);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e); process.exit(1); });

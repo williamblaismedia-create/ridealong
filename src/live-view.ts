@@ -69,8 +69,28 @@ export class LiveView {
     return this.mode;
   }
 
+  /**
+   * Bind the ws server (eager, at process start). Remembers the port so a
+   * later live_start after a live_stop can re-bind on it. Kept as the public
+   * entry used by main() and the tests; delegates to ensureStarted.
+   */
   async start(port: number): Promise<{ url: (ttlSec?: number) => string }> {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port });
+    this.port = port;
+    await this.ensureStarted(port);
+    return { url: (ttlSec?: number) => this.url(ttlSec) };
+  }
+
+  /**
+   * Lazily (re-)create the ws server. A no-op when already listening, so
+   * live_start is cheap to call repeatedly; after a live_stop cleared
+   * `this.server`, it re-binds on the remembered port. This is what makes the
+   * live_start -> live_stop -> live_start cycle hand out a live link every
+   * time instead of a URL to a closed port (M2).
+   */
+  async ensureStarted(port?: number): Promise<void> {
+    if (this.server) return;
+    const bindPort = port ?? this.port;
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: bindPort });
     this.server = wss;
 
     wss.on('connection', (ws, req) => {
@@ -79,11 +99,16 @@ export class LiveView {
 
     await new Promise<void>((resolve, reject) => {
       wss.once('listening', () => resolve());
-      wss.once('error', reject);
+      wss.once('error', (err) => {
+        // Failed to bind (e.g. EADDRINUSE from a stale process): drop the
+        // half-bound handle so the object can be retried, and let the caller
+        // (main()) degrade to a core server without live_* tools.
+        this.server = undefined;
+        reject(err);
+      });
     });
 
-    this.port = port;
-    return { url: (ttlSec?: number) => this.url(ttlSec) };
+    this.port = bindPort;
   }
 
   private async handleConnection(ws: WebSocket, req: import('node:http').IncomingMessage): Promise<void> {
@@ -162,6 +187,7 @@ export class LiveView {
   }
 
   url(ttlSec = 300): string {
+    if (!this.server) throw new Error('vue live non demarree');
     return `http://127.0.0.1:${this.port}/?token=${mintToken(this.opts.secret, ttlSec)}`;
   }
 
@@ -171,6 +197,12 @@ export class LiveView {
   }
 
   async stop(): Promise<void> {
+    const wss = this.server;
+    if (!wss) return; // idempotent: already stopped (a second live_stop resolves)
+    // Clear the handle up front so url() throws and ensureStarted() re-binds
+    // afterwards, and so a concurrent stop() is a no-op.
+    this.server = undefined;
+
     for (const [ws, cdp] of this.sessions) {
       await cdp.send('Page.stopScreencast').catch(() => {});
       await cdp.detach().catch(() => {});
@@ -178,8 +210,6 @@ export class LiveView {
     }
     this.sessions.clear();
 
-    const wss = this.server;
-    if (!wss) return;
     await new Promise<void>((resolve, reject) => {
       wss.close((err) => (err ? reject(err) : resolve()));
     });
