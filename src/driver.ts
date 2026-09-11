@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 // Transient CDP/Playwright errors: the target or session flickered but the
 // browser is still usable, so a short retry is worth it. Anything else
@@ -46,6 +46,8 @@ export class Driver {
   }
 
   page(): Page { return this._page; }
+
+  context(): BrowserContext { return this._page.context(); }
 
   async navigate(url: string): Promise<void> {
     await withRetry(() => this._page.goto(url, { waitUntil: 'domcontentloaded' }));

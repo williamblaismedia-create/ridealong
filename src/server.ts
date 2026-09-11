@@ -7,15 +7,21 @@ import { ArtifactStore } from './artifact-store.js';
 import { Perception, type StateHeader } from './perception.js';
 import { Action } from './action.js';
 import { Network } from './network.js';
+import { Tabs, type TabInfo } from './tabs.js';
 
 function headerLine(s: StateHeader): string {
   return `[state] url=${s.url} title=${JSON.stringify(s.title)} ready=${s.ready} dialog=${s.dialogOpen}`;
+}
+
+function tabsLines(list: TabInfo[]): string {
+  return list.map((t) => `[${t.id}]${t.active ? ' *' : ''} ${t.url} — ${t.title}`).join('\n') || '(aucun)';
 }
 
 interface Tool { shape: Record<string, z.ZodTypeAny>; run: (args: any) => Promise<string> }
 
 export function buildServer(deps: { perception: Perception; action: Action; network: Network }) {
   const { perception, action, network } = deps;
+  const tabs = new Tabs(perception.driver);
   const tools: Record<string, Tool> = {
     navigate: { shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
     state: { shape: {}, run: async () => headerLine(await perception.state()) },
@@ -28,6 +34,10 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
     scroll: { shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
     network_requests: { shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
     fetch_with_session: { shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
+    tabs_list: { shape: {}, run: async () => tabsLines(await tabs.list()) },
+    tabs_open: { shape: { url: z.string() }, run: async (a) => `ouvert onglet ${await tabs.open(a.url)}` },
+    tabs_close: { shape: { id: z.number() }, run: async (a) => { await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
+    tabs_select: { shape: { id: z.number() }, run: async (a) => { await tabs.select(a.id); return headerLine(await perception.state()); } },
   };
 
   const server = new McpServer({ name: 'scry', version: '0.1.0' });
