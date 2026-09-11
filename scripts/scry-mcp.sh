@@ -34,4 +34,15 @@ else
   echo "scry-mcp: env file not found at ${ENV_FILE}" >&2
 fi
 
-exec /usr/bin/node "${HOME}/scry/dist/src/server.js"
+# Resolve the node binary robustly. w-agent has no /usr/bin/node; node lives
+# at ~/.local/node/bin/node (v22) and is normally on PATH via ~/.bashrc. Order:
+#   1. explicit SCRY_NODE override (documented escape hatch),
+#   2. whatever `node` resolves to on PATH,
+#   3. the known ~/.local/node install,
+# then fail LOUDLY on stderr (never stdout — that is the JSON-RPC channel) so
+# the failure is visible at `initialize` instead of a silent non-start.
+NODE_BIN="${SCRY_NODE:-$(command -v node 2>/dev/null || true)}"
+[ -x "${NODE_BIN}" ] || NODE_BIN="${HOME}/.local/node/bin/node"
+[ -x "${NODE_BIN}" ] || { echo "scry-mcp: node introuvable (essayez SCRY_NODE=/chemin/vers/node)" >&2; exit 127; }
+
+exec "${NODE_BIN}" "${HOME}/scry/dist/src/server.js"
