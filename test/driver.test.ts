@@ -23,4 +23,12 @@ describe('Driver', () => {
     const png = await driver.screenshot();
     expect(png.length).toBeGreaterThan(1000);
   });
+
+  it('auto-dismisses a native dialog without hanging and records it', async () => {
+    await driver.navigate(env.pageUrl);
+    await driver.waitReady();
+    // The Driver's page.on('dialog') handler dismisses the dialog, so this evaluate resolves instead of hanging.
+    await driver.evaluate(() => { alert('boom'); });
+    expect(driver.dialogWasHandled()).toBe(true);
+  });
 });
