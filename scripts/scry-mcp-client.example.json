@@ -1,0 +1,20 @@
+{
+  "_comment": "Exemple de config client MCP pour brancher Claude Code sur Scry. Le serveur MCP de Scry parle en stdio et est lance PAR la session Claude (jamais un demon). Copier l'entree 'scry' voulue dans le fichier de config MCP de Claude Code, PAS ce fichier tel quel. Aucun secret ici : scry-mcp.sh source ~/scry-donnees/scry.env SUR w-agent.",
+
+  "_cas_A_depuis_le_Mac_ou_iPhone_par_SSH": {
+    "mcpServers": {
+      "scry": {
+        "command": "ssh",
+        "args": ["will@w-agent", "~/scry/scripts/scry-mcp.sh"]
+      }
+    }
+  },
+
+  "_cas_B_session_Claude_Code_qui_tourne_sur_w-agent": {
+    "mcpServers": {
+      "scry": {
+        "command": "/home/will/scry/scripts/scry-mcp.sh"
+      }
+    }
+  }
+}
