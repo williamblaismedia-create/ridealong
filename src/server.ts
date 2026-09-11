@@ -19,7 +19,7 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
   const tools: Record<string, Tool> = {
     navigate: { shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
     state: { shape: {}, run: async () => headerLine(await perception.state()) },
-    snapshot: { shape: {}, run: async () => { const s = await perception.snapshot(); return `${headerLine(s.state)}\n${s.text}`; } },
+    snapshot: { shape: { budget: z.number().optional() }, run: async (a) => { const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
     find: { shape: { query: z.string() }, run: async (a) => { const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
     read: { shape: { budget: z.number().optional() }, run: async (a) => { const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
     screenshot: { shape: { fullPage: z.boolean().optional() }, run: async (a) => (await perception.screenshot(a)).summary },

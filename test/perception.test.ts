@@ -39,6 +39,18 @@ describe('Perception', () => {
     expect(r.path).toBeTruthy();
   });
 
+  it('snapshot() truncates to budget and spills the full tree to disk', async () => {
+    const small = await per.snapshot({ budget: 10 });
+    expect(small.text.length).toBeLessThanOrEqual(10);
+    expect(small.truncated).toBe(true);
+    expect(small.path).toBeTruthy();
+    expect(small.nodes.length).toBeGreaterThan(0);
+    const big = await per.snapshot({ budget: 8000 });
+    expect(big.truncated).toBe(false);
+    expect(big.path).toBeUndefined();
+    expect(big.text).toContain('button "Go"');
+  });
+
   it('diff() reports the appended list item after a click', async () => {
     await per.snapshot();
     await driver.page().locator('#go').click();

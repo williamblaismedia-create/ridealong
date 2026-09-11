@@ -28,10 +28,14 @@ export class Perception {
     return this.state();
   }
 
-  async snapshot(): Promise<{ state: StateHeader; text: string; nodes: RefNode[] }> {
-    const { nodes, text } = await snapshotWithRefs(this.driver.page());
+  async snapshot(opts: { budget?: number } = {}): Promise<{ state: StateHeader; text: string; nodes: RefNode[]; truncated: boolean; path?: string }> {
+    const budget = opts.budget ?? this.budgetChars;
+    const { nodes, text: fullText } = await snapshotWithRefs(this.driver.page());
     this.lastNodes = nodes;
-    return { state: await this.state(), text, nodes };
+    const state = await this.state();
+    if (fullText.length <= budget) return { state, text: fullText, nodes, truncated: false };
+    const saved = await this.store.save('snapshot', fullText, 'txt');
+    return { state, text: fullText.slice(0, budget), nodes, truncated: true, path: saved.path };
   }
 
   async find(query: string): Promise<RefNode[]> {
