@@ -1,0 +1,41 @@
+import { chromium, type Browser, type Page } from 'playwright';
+
+export class Driver {
+  private dialogHandled = false;
+
+  private constructor(private browser: Browser, private _page: Page) {}
+
+  static async connect(cdpUrl: string, opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number }): Promise<Driver> {
+    const browser = await chromium.connectOverCDP(cdpUrl);
+    const context = browser.contexts()[0] ?? (await browser.newContext());
+    const page = context.pages()[0] ?? (await context.newPage());
+    await page.setViewportSize(opts.viewport);
+    page.setDefaultTimeout(opts.defaultTimeoutMs);
+    const driver = new Driver(browser, page);
+    // Native dialogs must never freeze the session: auto-dismiss, record that one appeared.
+    page.on('dialog', async (d) => { driver.dialogHandled = true; await d.dismiss().catch(() => {}); });
+    return driver;
+  }
+
+  page(): Page { return this._page; }
+
+  async navigate(url: string): Promise<void> {
+    await this._page.goto(url, { waitUntil: 'domcontentloaded' });
+  }
+
+  async waitReady(): Promise<void> {
+    await this._page.waitForLoadState('networkidle').catch(() => {});
+  }
+
+  async screenshot(opts: { fullPage?: boolean } = {}): Promise<Buffer> {
+    return this._page.screenshot({ fullPage: opts.fullPage ?? false, type: 'jpeg', quality: 80 });
+  }
+
+  async evaluate<T>(fn: string | ((...a: any[]) => T), arg?: any): Promise<T> {
+    return this._page.evaluate(fn as any, arg);
+  }
+
+  dialogWasHandled(): boolean { return this.dialogHandled; }
+
+  async close(): Promise<void> { await this.browser.close(); }
+}

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Scry Fixture</title></head>
+<body>
+  <h1>Scry Fixture</h1>
+  <button id="go">Go</button>
+  <input id="name" aria-label="Your name" />
+  <p id="status">idle</p>
+  <ul id="list"><li>alpha</li><li>beta</li></ul>
+  <script>
+    document.getElementById('go').addEventListener('click', () => {
+      document.getElementById('status').textContent = 'done';
+      const li = document.createElement('li'); li.textContent = 'gamma';
+      document.getElementById('list').appendChild(li);
+    });
+  </script>
+</body></html>
