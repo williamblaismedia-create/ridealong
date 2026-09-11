@@ -34,4 +34,8 @@ describe('buildServer', () => {
     expect(out).toMatch(/^\[state\] url=/);
     expect(out).toContain('button "Go"');
   });
+
+  it('callTool rejects an unknown tool name', () => {
+    expect(() => server.callTool('does-not-exist', {})).toThrow(/outil inconnu/);
+  });
 });

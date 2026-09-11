@@ -27,6 +27,7 @@ export class Action {
       case 'hover': await loc.hover(); break;
       case 'type': await loc.fill(text ?? ''); break;
       case 'press': await loc.press(text ?? 'Enter'); break;
+      default: throw new Error(`verbe inconnu: ${verb}`);
     }
   }
 

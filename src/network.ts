@@ -18,6 +18,8 @@ export class Network {
     return filter ? this.records.filter((r) => r.url.includes(filter)) : this.records.slice();
   }
 
+  // NOTE: refetches the matching URL (GET) within the page session — this is NOT the page's
+  // original captured response body. Proper captured-body semantics deferred to Plan B.
   async readResponse(match: string): Promise<{ path: string; summary: string } | null> {
     // Bodies are not retained after load: refetch the matching URL within the page session.
     const rec = this.records.find((r) => r.url.includes(match));

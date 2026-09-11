@@ -37,7 +37,10 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
 
   return Object.assign(server, {
     listToolNames: () => Object.keys(tools),
-    callTool: (name: string, args: any) => tools[name].run(args),
+    callTool: (name: string, args: any) => {
+      if (!tools[name]) throw new Error(`outil inconnu: ${name}`);
+      return tools[name].run(args);
+    },
   });
 }
 

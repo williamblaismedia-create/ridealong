@@ -28,4 +28,10 @@ describe('Action', () => {
     await action.act(input.ref, 'type', 'Ada');
     expect(await driver.page().locator('#name').inputValue()).toBe('Ada');
   });
+
+  it('rejects an unknown verb', async () => {
+    const { nodes } = await snapshotWithRefs(driver.page());
+    const go = nodes.find((n) => n.role === 'button' && n.name === 'Go')!;
+    await expect(action.act(go.ref, 'bogus' as any)).rejects.toThrow(/verbe inconnu/);
+  });
 });
