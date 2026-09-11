@@ -180,6 +180,11 @@ export class LiveView {
       this.sessions.delete(ws);
     });
 
+    // Bring the cast (PRIMARY) tab to the foreground: in headful Chrome a
+    // backgrounded tab stops emitting screencast frames, so the live view would
+    // silently freeze if another tab were in front (M3). Best-effort.
+    await this.driver.page().bringToFront().catch(() => {});
+
     try {
       cdp = await this.driver.cdpSession();
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60 });

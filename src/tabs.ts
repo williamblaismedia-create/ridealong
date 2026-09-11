@@ -27,8 +27,16 @@ export class Tabs {
     const pages = this.driver.context().pages();
     if (id < 0 || id >= pages.length) throw new Error(`onglet ${id} inexistant`);
     if (pages[id] === this.driver.page()) throw new Error('impossible de fermer l onglet principal');
+    const wasActive = pages[id] === this.activePage;
     await pages[id].close();
-    if (pages[id] === this.activePage) this.activePage = this.driver.page();
+    if (wasActive) {
+      // The active tab just went away. Fall back to the primary tab AND
+      // actually foreground it, so "active" and Chrome's real foreground tab
+      // don't silently diverge — and so the live-view screencast (bound to the
+      // primary) keeps producing frames (M3).
+      this.activePage = this.driver.page();
+      await this.driver.page().bringToFront().catch(() => {});
+    }
   }
 
   async select(id: number): Promise<void> {

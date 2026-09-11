@@ -44,6 +44,17 @@ describe('MCP transport integration', () => {
     expect(names).toContain('snapshot');
   });
 
+  it('every tool carries a real description, and tabs_select states the primary-tab limitation (M3)', async () => {
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+    for (const t of tools) {
+      expect(t.description ?? '', `tool ${t.name} has no description`).not.toBe('');
+      expect((t.description ?? '').length).toBeGreaterThan(15);
+    }
+    const select = tools.find((t) => t.name === 'tabs_select');
+    expect(select?.description).toMatch(/principal/i);
+  });
+
   it('calls a tool through the real MCP path and gets the tool result back', async () => {
     const res: any = await client.callTool({ name: 'snapshot', arguments: {} });
     expect(Array.isArray(res.content)).toBe(true);

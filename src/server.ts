@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -18,7 +19,15 @@ function tabsLines(list: TabInfo[]): string {
   return list.map((t) => `[${t.id}]${t.active ? ' *' : ''} ${t.url} — ${t.title}`).join('\n') || '(aucun)';
 }
 
-interface Tool { shape: Record<string, z.ZodTypeAny>; run: (args: any) => Promise<string> }
+interface Tool { desc: string; shape: Record<string, z.ZodTypeAny>; run: (args: any) => Promise<string> }
+
+// Repeated in the tabs_*/live_* descriptions: v1 binds perception, action and
+// the live-view screencast to the PRIMARY tab only. tabs_select/tabs_open just
+// change which tab Chrome shows; they do NOT move where Scry looks or acts
+// (rebinding via Driver.setPage() is a deferred follow-up). Say so in the
+// tool text so the model doesn't assume a switch that never happens.
+const PRIMARY_TAB_NOTE =
+  'Perception, action et la vue live ciblent TOUJOURS l\'onglet principal ; tabs_select/tabs_open ne font que changer l\'onglet affiche par Chrome, sans deplacer ou Scry regarde/agit.';
 
 export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveView }) {
   const { perception, action, network, liveView } = deps;
@@ -38,32 +47,32 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
   };
 
   const tools: Record<string, Tool> = {
-    navigate: { shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
-    state: { shape: {}, run: async () => headerLine(await perception.state()) },
-    snapshot: { shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
-    find: { shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
-    read: { shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
-    screenshot: { shape: { fullPage: z.boolean().optional() }, run: async (a) => { refuseInputMode(); return (await perception.screenshot(a)).summary; } },
-    act: { shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
-    fill: { shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await action.fill(a.fields); return headerLine(await perception.state()); } },
-    scroll: { shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
-    network_requests: { shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
-    fetch_with_session: { shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
-    tabs_list: { shape: {}, run: async () => tabsLines(await tabs.list()) },
-    tabs_open: { shape: { url: z.string() }, run: async (a) => `ouvert onglet ${await tabs.open(a.url)}` },
-    tabs_close: { shape: { id: z.number() }, run: async (a) => { await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
-    tabs_select: { shape: { id: z.number() }, run: async (a) => { await tabs.select(a.id); return headerLine(await perception.state()); } },
+    navigate: { desc: 'Naviguer l\'onglet principal vers une URL absolue et attendre le chargement du DOM. Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
+    state: { desc: 'Renvoyer l\'entete [state] courant de l\'onglet principal : url, titre, pret, et si un dialogue natif est ouvert.', shape: {}, run: async () => headerLine(await perception.state()) },
+    snapshot: { desc: 'Arbre d\'accessibilite elague de l\'onglet principal, chaque element portant une [ref] stable pour agir par reference. Les grands arbres sont ecrits sur disque (un chemin est renvoye). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
+    find: { desc: 'Trouver les elements de l\'onglet principal dont le role/nom correspond a une requete ; renvoie leurs [ref]. Suspendu tant que la vue live est en mode input.', shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
+    read: { desc: 'Lire le texte visible (innerText) de l\'onglet principal, tronque a un budget de tokens (texte complet ecrit sur disque). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
+    screenshot: { desc: 'Capture JPEG de l\'onglet principal (pleine page en option), ecrite sur disque ; renvoie un chemin + resume. Suspendu tant que la vue live est en mode input.', shape: { fullPage: z.boolean().optional() }, run: async (a) => { refuseInputMode(); return (await perception.screenshot(a)).summary; } },
+    act: { desc: 'Agir sur un element de l\'onglet principal par [ref] : click, hover, type (remplir), ou press (touche). Renvoie l\'entete [state] resultant.', shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
+    fill: { desc: 'Remplir plusieurs champs de l\'onglet principal par [ref] en un appel. Renvoie l\'entete [state] resultant.', shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await action.fill(a.fields); return headerLine(await perception.state()); } },
+    scroll: { desc: 'Faire defiler l\'onglet principal vers le haut ou le bas, d\'un nombre de pixels optionnel.', shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
+    network_requests: { desc: 'Lister les requetes reseau capturees de l\'onglet principal (url, statut, type), filtre par sous-chaine optionnel. Sans les corps.', shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
+    fetch_with_session: { desc: 'Recuperer une URL avec les cookies de la session du navigateur (contexte de l\'onglet principal) ; le corps est ecrit sur disque, un chemin + resume est renvoye.', shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
+    tabs_list: { desc: `Lister les onglets ouverts (id, url, titre, lequel est actif). ${PRIMARY_TAB_NOTE}`, shape: {}, run: async () => tabsLines(await tabs.list()) },
+    tabs_open: { desc: `Ouvrir un nouvel onglet a une URL et le mettre au premier plan ; renvoie son id. ${PRIMARY_TAB_NOTE}`, shape: { url: z.string() }, run: async (a) => `ouvert onglet ${await tabs.open(a.url)}` },
+    tabs_close: { desc: 'Fermer un onglet par id (l\'onglet principal ne peut pas etre ferme). Si l\'onglet actif est ferme, le focus revient a l\'onglet principal.', shape: { id: z.number() }, run: async (a) => { await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
+    tabs_select: { desc: `Mettre un onglet au premier plan par id. NE FAIT QUE cela : ${PRIMARY_TAB_NOTE}`, shape: { id: z.number() }, run: async (a) => { await tabs.select(a.id); return headerLine(await perception.state()); } },
   };
 
   if (liveView) {
-    tools.live_start = { shape: { ttlSec: z.number().optional() }, run: async (a) => { await liveView.ensureStarted(); return liveView.url(a.ttlSec); } };
-    tools.live_mode = { shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
-    tools.live_stop = { shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
+    tools.live_start = { desc: `Demarrer (ou reutiliser) la vue live et renvoyer un lien signe et expirant que William ouvre pour regarder l\'onglet principal en direct. ttlSec est borne a [30,3600], defaut 900. ${PRIMARY_TAB_NOTE}`, shape: { ttlSec: z.number().int().min(30).max(3600).optional() }, run: async (a) => { await liveView.ensureStarted(); return liveView.url(a.ttlSec); } };
+    tools.live_mode = { desc: 'Basculer la vue live entre "read" (regarder seulement) et "input" (passe-la-main : la souris/le clavier de William sont relayes vers l\'onglet principal). La perception est suspendue en mode input.', shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
+    tools.live_stop = { desc: 'Arreter la vue live et invalider son lien. Re-appelable : un live_start ulterieur sert un nouveau lien.', shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
   }
 
   const server = new McpServer({ name: 'scry', version: '0.1.0' });
   for (const [name, t] of Object.entries(tools)) {
-    server.tool(name, t.shape, async (args: any) => ({ content: [{ type: 'text', text: await t.run(args) }] }));
+    server.registerTool(name, { description: t.desc, inputSchema: t.shape }, async (args: any) => ({ content: [{ type: 'text', text: await t.run(args) }] }));
   }
 
   return Object.assign(server, {
@@ -123,4 +132,8 @@ export async function main(): Promise<void> {
   await server.connect(transport);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e); process.exit(1); });
+// n1: pathToFileURL handles symlinks/relative argv[1] and OS path encoding,
+// unlike a hand-built `file://${process.argv[1]}` string.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}
