@@ -1,0 +1,19 @@
+# Ridealong
+
+> Ridealong is an open-source MCP server for Claude Code that drives a real Google Chrome and streams it live (GPU-encoded H.264). The human can watch, point at elements, pause, approve sensitive actions, or take the wheel from a phone; the agent gets console errors, network requests, real tabs and stable element refs. MIT.
+
+Key facts
+- Category: MCP server, browser automation, human-in-the-loop AI agents.
+- Works with: Claude Code (stdio MCP); any MCP client for the tools. Instant messages/approvals use Claude Code channels.
+- Runs: locally (one command), Docker, or an always-on server with a tunnel.
+- Browser: real Google Chrome via CDP, dedicated profile, HTTP cache and service workers bypassed.
+- Live view: H.264 (NVENC / VideoToolbox / libx264) or JPEG; 720p to 2K; Claude's cursor; journal; pause; approval cards; pointer hints; messages; real tabs; Manual mode with no capture.
+- Security: HMAC-signed expiring links in the URL fragment; 30-day device tokens; loopback by default; Manual-mode input never stored, logged or shown to the model.
+- Tools: navigate, reload, state, snapshot, find, read, diff, screenshot, console_errors, act, fill, scroll, network_requests, fetch_with_session, tabs_list, tabs_open, tabs_select, tabs_close, live_start, live_mode, live_stop, ask_approval, inbox.
+
+Links
+- Repository: https://github.com/williamblaismedia-create/ridealong
+- README (EN): https://github.com/williamblaismedia-create/ridealong/blob/main/README.md
+- README (FR): https://github.com/williamblaismedia-create/ridealong/blob/main/README.fr.md
+- Security policy: https://github.com/williamblaismedia-create/ridealong/blob/main/SECURITY.md
+- Author: W Automatisations, Montréal — https://wautomatisations.com

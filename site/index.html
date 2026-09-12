@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ridealong — A browser your AI drives. Ride along, grab the wheel anytime.</title>
+<meta name="description" content="Ridealong is an open-source MCP server for Claude Code that drives a real Google Chrome you can watch live (GPU-encoded H.264), point at, pause, approve, or take over from your phone. Console errors, network, tabs and stable refs for the agent; no-capture Manual mode for you.">
+<link rel="canonical" href="https://williamblaismedia-create.github.io/ridealong/">
+<link rel="alternate" hreflang="en" href="https://williamblaismedia-create.github.io/ridealong/">
+<link rel="alternate" hreflang="x-default" href="https://williamblaismedia-create.github.io/ridealong/">
+<link rel="icon" type="image/svg+xml" href="media/ridealong-mark.svg">
+<meta name="theme-color" content="#0B0908">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="author" content="William Blais — W Automatisations">
+<meta name="keywords" content="MCP server, Claude Code, browser automation, human in the loop, live view, Playwright alternative, Chrome DevTools MCP, AI agent browser, approval gate">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ridealong">
+<meta property="og:title" content="Ridealong — A browser your AI drives. Ride along, grab the wheel anytime.">
+<meta property="og:description" content="Open-source MCP server for Claude Code: real Chrome, live H.264 view, approvals, pointer, Manual mode. Watch the agent browse. Take over from your phone.">
+<meta property="og:url" content="https://williamblaismedia-create.github.io/ridealong/">
+<meta property="og:image" content="https://williamblaismedia-create.github.io/ridealong/media/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ridealong — A browser your AI drives">
+<meta name="twitter:description" content="Watch Claude browse a real Chrome live. Point, pause, approve, or take the wheel from your phone. Open-source MCP server.">
+<meta name="twitter:image" content="https://williamblaismedia-create.github.io/ridealong/media/og.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://williamblaismedia-create.github.io/ridealong/#app",
+      "name": "Ridealong",
+      "alternateName": "ridealong-mcp",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "MCP server",
+      "operatingSystem": "macOS, Linux, Docker",
+      "softwareVersion": "0.1.0",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "codeRepository": "https://github.com/williamblaismedia-create/ridealong",
+      "downloadUrl": "https://github.com/williamblaismedia-create/ridealong",
+      "url": "https://williamblaismedia-create.github.io/ridealong/",
+      "image": "https://williamblaismedia-create.github.io/ridealong/media/og.png",
+      "description": "Open-source MCP server for Claude Code that drives a real Google Chrome and streams it live (GPU-encoded H.264). Watch the agent, point at elements, pause, approve sensitive actions, or take the wheel from your phone. Console errors, network requests, tabs and stable refs for the agent; no-capture Manual mode for the human.",
+      "featureList": ["Live H.264 view of a real Chrome", "Manual mode: your clicks, keys and scroll relayed, nothing stored", "Approval gate before payments, sends and deletes", "Pointer hints and messages from the viewer to the agent", "console_errors, network_requests, diff, snapshot with stable refs", "Real tabs with a moving target", "Resolution picker 720p to 2K", "Self-healing relay and follower promotion", "Runs locally, in Docker, or on an always-on server"],
+      "author": { "@id": "https://williamblaismedia-create.github.io/ridealong/#org" },
+      "keywords": "MCP server, Claude Code, browser automation, human in the loop, live view, approval gate"
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://williamblaismedia-create.github.io/ridealong/#org",
+      "name": "W Automatisations",
+      "url": "https://wautomatisations.com",
+      "founder": { "@type": "Person", "name": "William Blais" },
+      "address": { "@type": "PostalAddress", "addressLocality": "Montréal", "addressRegion": "QC", "addressCountry": "CA" }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://williamblaismedia-create.github.io/ridealong/#faq",
+      "mainEntity": [
+        { "@type": "Question", "name": "What is Ridealong?", "acceptedAnswer": { "@type": "Answer", "text": "Ridealong is an open-source MCP server for Claude Code. It drives a real Google Chrome over the Chrome DevTools Protocol and streams the browser live to a web page you can watch, point at, pause, approve, or take over from your phone." } },
+        { "@type": "Question", "name": "How is Ridealong different from Playwright MCP or Chrome DevTools MCP?", "acceptedAnswer": { "@type": "Answer", "text": "Those tools let an agent act in a browser. Ridealong adds the human: a live H.264 view of the real Chrome, an approval gate before sensitive actions, Manual mode where your own clicks and keys go into the page without being stored or shown to the agent, pointer hints and messages back to the agent, plus console errors, network requests, real tabs and stable element refs in the transcript." } },
+        { "@type": "Question", "name": "Is what I type in Manual mode visible to Claude?", "acceptedAnswer": { "@type": "Answer", "text": "No. In Manual mode your input is relayed straight to Chrome and never stored, logged or exposed to the model. Claude's perception tools refuse to run while you have control, and password fields never expose their value in snapshots. A test suite pins this down." } },
+        { "@type": "Question", "name": "Do I need a server to use Ridealong?", "acceptedAnswer": { "@type": "Answer", "text": "No. Run it on the machine Claude drives with one command (claude mcp add ridealong -- scripts/ridealong-local.sh). A Docker image and an always-on server setup with a Cloudflare tunnel are also documented for watching from your phone anywhere." } },
+        { "@type": "Question", "name": "Does the live view need a GPU?", "acceptedAnswer": { "@type": "Answer", "text": "No. With ffmpeg installed, Ridealong encodes H.264 with NVENC, VideoToolbox on macOS, or software libx264, whichever is available. Without ffmpeg it streams JPEG frames sized to your screen." } },
+        { "@type": "Question", "name": "How are the live view links secured?", "acceptedAnswer": { "@type": "Answer", "text": "Links are HMAC-signed and expire after 30 seconds to 1 hour. They travel in the URL fragment, never in history or server logs. A device that opened one valid link keeps a 30-day device token in its browser so the bare address works. Rotating the secret revokes everything." } }
+      ]
+    }
+  ]
+}
+</script>
+
+<style>
+  :root {
+    --bg: #0B0908; --bg-2: #0E0C0A; --ink: #1A1714; --ink-2: #221E1A;
+    --cream: #FAF8F5; --cream-2: #DDD6CB; --muted: #A69C8D; --faint: #605850;
+    --terra: #DA7756; --terra-2: #E6A485; --terra-deep: #A94B2D;
+    --line: rgba(255,255,255,.09); --line-2: rgba(255,255,255,.05);
+    --sans: "Montserrat", "Helvetica Neue", Arial, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --ease: cubic-bezier(.16,1,.3,1); --r: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--cream); font: 500 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; display: block; }
+  .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+  h1, h2, h3 { margin: 0; letter-spacing: -.02em; line-height: 1.1; }
+  h2 { font-size: clamp(28px, 3.6vw, 44px); font-weight: 700; max-width: 22ch; }
+  h3 { font-size: 20px; font-weight: 700; }
+  p { margin: 0; }
+  .lead { color: var(--muted); font-size: 18px; max-width: 58ch; }
+  code, .mono { font-family: var(--mono); }
+  :focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(218,119,86,.55); border-radius: 8px; }
+
+  /* Nav — quiet, like a repo header */
+  nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: rgba(11,9,8,.72); border-bottom: 1px solid var(--line-2); }
+  nav .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: italic 800 17px/1 var(--sans); letter-spacing: .05em; }
+  .brand svg { width: 22px; height: 22px; }
+  nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 14px; color: var(--cream-2); }
+  nav .links a:hover { color: var(--cream); }
+  .gh { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--ink); font-size: 13px; }
+  .gh svg { width: 16px; height: 16px; fill: var(--cream); }
+  .gh b { font-weight: 600; color: var(--cream); }
+
+  /* Hero — the orb sends waves; the product is the image */
+  .hero { position: relative; padding: 96px 0 40px; overflow: hidden; }
+  .waves { position: absolute; left: 50%; top: -420px; width: 1600px; height: 1600px; transform: translateX(-50%); pointer-events: none; }
+  .waves circle { fill: none; stroke: var(--terra); stroke-width: 1; opacity: 0; transform-origin: 50% 50%; animation: wave 9s var(--ease) infinite; }
+  .waves circle:nth-child(2) { animation-delay: 1.5s; } .waves circle:nth-child(3) { animation-delay: 3s; } .waves circle:nth-child(4) { animation-delay: 4.5s; } .waves circle:nth-child(5) { animation-delay: 6s; } .waves circle:nth-child(6) { animation-delay: 7.5s; }
+  @keyframes wave { 0% { transform: scale(.08); opacity: 0; } 8% { opacity: .55; } 100% { transform: scale(1); opacity: 0; } }
+  .glow { position: absolute; left: 50%; top: -160px; width: 1100px; height: 700px; transform: translateX(-50%); background: radial-gradient(48% 55% at 50% 40%, rgba(218,119,86,.20), rgba(218,119,86,0) 70%); pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { .waves circle { animation: none; opacity: .18; transform: scale(.4); } .waves circle:nth-child(3) { transform: scale(.7); } .waves circle:nth-child(5) { transform: scale(1); } }
+  .hero .wrap { position: relative; }
+  .mark { width: 64px; height: 64px; margin-bottom: 26px; }
+  .mark .pupil { animation: pulse 2.6s ease-in-out infinite; transform-origin: 48px 48px; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+  @media (prefers-reduced-motion: reduce) { .mark .pupil { animation: none; } }
+  h1 { font-size: clamp(40px, 6.4vw, 78px); font-weight: 700; max-width: 16ch; }
+  h1 em { font-style: italic; font-weight: 800; color: var(--terra-2); }
+  .hero .lead { margin-top: 22px; font-size: clamp(17px, 1.6vw, 20px); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 34px; }
+  .install { display: inline-flex; align-items: center; gap: 14px; height: 52px; padding: 0 8px 0 18px; border-radius: 999px; background: var(--ink); border: 1px solid var(--line); font: 500 14px var(--mono); color: var(--cream-2); }
+  .install button { height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--terra); color: #fff; font: 600 13px var(--sans); cursor: pointer; transition: transform .15s var(--ease), background .2s; }
+  .install button:hover { background: var(--terra-deep); } .install button:active { transform: scale(.97); }
+  .btn { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--cream); font-weight: 600; font-size: 15px; }
+  .btn:hover { background: rgba(255,255,255,.05); }
+  .meta { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 18px; font: 500 12px var(--mono); color: var(--faint); }
+  .demo { margin: 64px auto 0; width: min(1120px, calc(100% - 40px)); border-radius: 22px; border: 1px solid var(--line); background: var(--ink); padding: 8px; box-shadow: 0 60px 140px rgba(0,0,0,.65), 0 0 0 1px rgba(218,119,86,.12); }
+  .demo img { border-radius: 16px; }
+
+  /* Sections */
+  section { padding: 110px 0 0; }
+  .kicker { color: var(--terra-2); font: 500 13px var(--mono); margin-bottom: 18px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+  .move { padding: 26px; border-radius: var(--r); background: var(--ink); border: 1px solid var(--line-2); min-height: 250px; display: flex; flex-direction: column; gap: 12px; }
+  .move .ui { margin-top: auto; font: 500 12px var(--mono); color: var(--cream-2); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; line-height: 1.5; }
+  .move .ui b { color: var(--terra-2); font-weight: 500; }
+  .move p { color: var(--muted); font-size: 15px; }
+  .shot { margin-top: 44px; border-radius: 20px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 40px 100px rgba(0,0,0,.55); }
+  .shot img { width: 100%; height: auto; }
+  .two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .two > * { min-width: 0; }
+  .demo img { width: 100%; height: auto; }
+  .tools { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 18px; margin-top: 26px; font: 500 13px/1.9 var(--mono); color: var(--cream-2); }
+  .tools span { color: var(--faint); }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 40px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 14px 14px; border-top: 1px solid var(--line-2); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  thead th { border-top: 0; padding-top: 0; }
+  td:first-child { color: var(--cream); font-weight: 600; }
+  td .y { color: var(--terra-2); } td .n { color: var(--faint); }
+  .ridecol { background: rgba(218,119,86,.06); }
+
+  .trust { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+  .trust div { padding: 24px; border-radius: var(--r); border: 1px solid var(--line-2); }
+  .trust p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+
+  .tabs { margin-top: 40px; display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+  .tabs [role=tablist] { display: flex; flex-direction: column; gap: 6px; }
+  .tabs [role=tab] { text-align: left; padding: 12px 16px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--muted); font: 600 15px var(--sans); cursor: pointer; }
+  .tabs [role=tab][aria-selected=true] { background: var(--ink); border-color: var(--line); color: var(--cream); }
+  .tabs [role=tabpanel] { padding: 22px 24px; border-radius: var(--r); background: var(--ink); border: 1px solid var(--line-2); }
+  .tabs [role=tabpanel][hidden] { display: none; }
+  pre { margin: 0; font: 500 13.5px/1.7 var(--mono); color: var(--cream-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre .c { color: var(--faint); }
+  .tabs p { color: var(--muted); font-size: 15px; margin-top: 14px; }
+
+  .faq { margin-top: 40px; border-top: 1px solid var(--line-2); }
+  details { border-bottom: 1px solid var(--line-2); }
+  summary { cursor: pointer; list-style: none; padding: 22px 0; font-weight: 600; font-size: 18px; display: flex; justify-content: space-between; gap: 20px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--terra-2); font-weight: 500; }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--muted); padding: 0 0 22px; max-width: 70ch; }
+
+  footer { margin-top: 120px; padding: 40px 0 60px; border-top: 1px solid var(--line-2); color: var(--faint); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; }
+  footer a { color: var(--cream-2); } footer a:hover { color: var(--cream); }
+  footer .brand { margin-right: auto; }
+
+  @media (max-width: 860px) {
+    .grid3, .trust { grid-template-columns: 1fr; }
+    .two { grid-template-columns: 1fr; }
+    .tabs { grid-template-columns: 1fr; } .tabs [role=tablist] { flex-direction: row; overflow-x: auto; }
+    nav .links a:not(.gh) { display: none; }
+    .hero { padding-top: 64px; } section { padding-top: 80px; }
+    table { display: block; overflow-x: auto; }
+    .tools { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Ridealong">
+      <svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="29" fill="none" stroke="#FAF8F5" stroke-width="7"/><path d="M31.6 36.8a21 21 0 0 1 13.4-9.3" fill="none" stroke="#FAF8F5" stroke-width="5" stroke-linecap="round" opacity=".45"/><circle cx="48" cy="48" r="11" fill="#DA7756"/></svg>
+      RIDEALONG
+    </a>
+    <div class="links">
+      <a href="#moves">What you get</a>
+      <a href="#claude">In Claude Code</a>
+      <a href="#compare">Compare</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>Star</span> <b id="stars" aria-live="polite"></b>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="glow" aria-hidden="true"></div>
+  <svg class="waves" viewBox="0 0 1600 1600" aria-hidden="true">
+    <circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/>
+  </svg>
+  <div class="wrap">
+    <svg class="mark" viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="29" fill="none" stroke="#FAF8F5" stroke-width="6"/><path d="M31.6 36.8a21 21 0 0 1 13.4-9.3" fill="none" stroke="#FAF8F5" stroke-width="4.4" stroke-linecap="round" opacity=".45"/><circle class="pupil" cx="48" cy="48" r="10" fill="#DA7756"/></svg>
+    <h1>A browser your AI drives. <em>Ride along,</em> grab the wheel anytime.</h1>
+    <p class="lead">Ridealong is an open-source MCP server for Claude Code. Claude drives a real Google Chrome; you open one link and watch it live, point at things, pause, approve the risky steps, or take the wheel from your phone. Then hand it back.</p>
+    <div class="cta">
+      <div class="install"><code id="cmd">claude mcp add ridealong -- ./scripts/ridealong-local.sh</code><button type="button" id="copy" aria-label="Copy install command">Copy</button></div>
+      <a class="btn" href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">View on GitHub</a>
+    </div>
+    <div class="meta"><span>MIT</span><span>Node ≥ 20</span><span>133 tests</span><span>macOS · Linux · Docker</span><span>real Google Chrome, not headless</span></div>
+  </div>
+  <figure class="demo">
+    <img src="media/demo.gif" width="1920" height="1200" alt="Ridealong live view: Claude's cursor moves across a real Chrome page while an action journal fills; the operator switches to Manual mode and the frame turns terracotta" loading="eager" fetchpriority="high">
+  </figure>
+</header>
+
+<main>
+  <section id="moves">
+    <div class="wrap">
+      <p class="kicker">what you get</p>
+      <h2>Three moves that no other browser MCP gives you.</h2>
+      <div class="grid3">
+        <article class="move">
+          <h3>Watch it live</h3>
+          <p>A GPU-encoded H.264 stream of the real Chrome, about 150 ms behind. Claude's cursor glides to each target with a ripple on click; a journal keeps every action with its time.</p>
+          <div class="ui">10:41:09 <b>click</b> button « Login »<br>10:41:10 <b>type</b> textbox « Email »<br>10:41:12 <b>navigate</b> https://app.example.com/</div>
+        </article>
+        <article class="move">
+          <h3>Point and say</h3>
+          <p>Tap an element while Claude works and it hears “William points at: button « changer »”. Type a line in the viewer and it lands in the transcript, instantly if you enable Claude Code channels.</p>
+          <div class="ui"><b>William pointe :</b> button « changer » (612,388)<br><b>William dit :</b> pas celui-là, l'autre</div>
+        </article>
+        <article class="move">
+          <h3>Take the wheel</h3>
+          <p>Switch to Manual. Your clicks, keys, trackpad scroll and pinch go straight into the page. Nothing you type is stored, logged or shown to Claude. Switch back when the login is done.</p>
+          <div class="ui">Auto <b>|</b> Manuel &nbsp;&nbsp; ⏸ Pause<br><b>ask_approval</b> “Pay $49?” → APPROVED</div>
+        </article>
+      </div>
+      <div class="two" style="margin-top:44px;align-items:center">
+        <div class="shot" style="margin-top:0"><img src="media/liveview.png" width="2880" height="1800" alt="Ridealong live view on desktop: browser-style tabs, the address bar with resolution and frame rate, Claude's cursor and its label over a real page, the action journal open" loading="lazy"></div>
+        <div class="shot" style="margin-top:0;background:#0B0908"><img src="media/phone.png" width="1400" height="2000" alt="Ridealong on a phone: the notch with Auto and Manual, an approval card asking to pay a Pro subscription with Refuse and Approve buttons, the live Chrome frame" loading="lazy" style="max-height:560px;object-fit:cover;object-position:center 12%"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="claude">
+    <div class="wrap">
+      <p class="kicker">in Claude Code</p>
+      <div class="two">
+        <div>
+          <h2>Every tool call is visible. Every risky one waits for you.</h2>
+          <p class="lead" style="margin-top:18px">Ridealong is a plain MCP server: Claude calls <code>navigate</code>, <code>snapshot</code>, <code>act</code> like any other tool. But the transcript now carries console errors, what you pointed at, and an approval verdict before a payment goes through.</p>
+          <div class="tools">
+            <div><span>perceive</span><br>state · snapshot · find · read · diff<br>screenshot · console_errors<br>network_requests · fetch_with_session</div>
+            <div><span>act</span><br>navigate · reload · act · fill · scroll<br><span>tabs</span><br>tabs_list · tabs_open · tabs_select · tabs_close</div>
+            <div><span>live</span><br>live_start · live_mode · live_stop<br>ask_approval · inbox</div>
+          </div>
+        </div>
+        <div class="shot" style="margin-top:0"><img src="media/cli.png" width="2120" height="1400" alt="Terminal: installing Ridealong with claude mcp add, then asking Claude to open a site and hand out the live view link" loading="lazy"></div>
+      </div>
+      <div class="shot"><img src="media/terminal.png" width="2240" height="1600" alt="A Claude Code session with Ridealong: navigate, snapshot, act, console_errors showing two real errors, a channel message where the operator points at a button, and an approved ask_approval" loading="lazy"></div>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="wrap">
+      <p class="kicker">compare</p>
+      <h2>Not another Playwright wrapper.</h2>
+      <p class="lead" style="margin-top:18px">Playwright MCP and Chrome DevTools MCP let an agent act in a browser. Claude in Chrome puts the agent inside your own tabs. Ridealong keeps the agent on its own real Chrome and puts <strong>you</strong> in the passenger seat, with the door handle.</p>
+      <table>
+        <thead><tr><th></th><th>Playwright MCP</th><th>Chrome DevTools MCP</th><th>Claude in Chrome</th><th class="ridecol">Ridealong</th></tr></thead>
+        <tbody>
+          <tr><td>Browser</td><td>headless Chromium</td><td>your Chrome via CDP</td><td>your Chrome, your tabs</td><td class="ridecol"><span class="y">real Google Chrome, dedicated profile</span></td></tr>
+          <tr><td>See what the agent sees</td><td>screenshots on request</td><td>screenshots on request</td><td>same screen</td><td class="ridecol"><span class="y">live H.264 stream, cursor, journal</span></td></tr>
+          <tr><td>Take over mid-task</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td>you share the mouse</td><td class="ridecol"><span class="y">Manual mode from any device, input never stored</span></td></tr>
+          <tr><td>Approve before pay / send / delete</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td>per-action prompts</td><td class="ridecol"><span class="y">ask_approval on the viewer, tool waits</span></td></tr>
+          <tr><td>Guide the agent</td><td>prompt</td><td>prompt</td><td>prompt</td><td class="ridecol"><span class="y">tap the element, or message it</span></td></tr>
+          <tr><td>Console, network, tabs</td><td>partial</td><td><span class="y">yes</span></td><td>limited</td><td class="ridecol"><span class="y">console_errors, network_requests, real tabs, diff</span></td></tr>
+          <tr><td>Runs where</td><td>local</td><td>local</td><td>your desktop</td><td class="ridecol"><span class="y">local, Docker, or always-on server + phone</span></td></tr>
+          <tr><td>License</td><td>Apache-2.0</td><td>Apache-2.0</td><td>proprietary</td><td class="ridecol"><span class="y">MIT</span></td></tr>
+        </tbody>
+      </table>
+      <div class="shot"><img src="media/everything.png" width="2576" height="1456" alt="Board of Ridealong outputs: console errors and exceptions, network requests with the user's cookies, real tabs with a moving target, stable refs and diff, approval and Manual mode, live view messages" loading="lazy"></div>
+    </div>
+  </section>
+
+  <section id="trust">
+    <div class="wrap">
+      <p class="kicker">trust</p>
+      <h2>Built for the moment the agent hits a login page.</h2>
+      <div class="trust">
+        <div><h3>No capture</h3><p>Manual-mode input is relayed to Chrome and never retained. Perception tools refuse to run while you hold the wheel. Password fields never expose values in snapshots. Tests enforce it.</p></div>
+        <div><h3>Signed, expiring links</h3><p>HMAC-signed links, 30 s to 1 h, carried in the URL fragment so they never reach history or logs. A paired device keeps a 30-day token. Rotate one secret to revoke everything.</p></div>
+        <div><h3>Loopback by default</h3><p>The live view listens on 127.0.0.1. You decide how to expose it: a Cloudflare tunnel, a VPN, or nothing at all.</p></div>
+      </div>
+      <div class="shot"><img src="media/desktop.png" width="2560" height="1656" alt="Ridealong live view in a desktop browser window: tab strip, address bar, video and stats, Claude's cursor with its label, the action journal open on the right" loading="lazy"></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <p class="kicker">get started</p>
+      <h2>Three ways to run it. All of them in under five minutes.</h2>
+      <div class="tabs">
+        <div role="tablist" aria-label="Install options">
+          <button role="tab" aria-selected="true" aria-controls="t-local" id="tab-local">On this machine</button>
+          <button role="tab" aria-selected="false" aria-controls="t-docker" id="tab-docker">Docker</button>
+          <button role="tab" aria-selected="false" aria-controls="t-server" id="tab-server">Always-on server</button>
+        </div>
+        <div role="tabpanel" id="t-local" aria-labelledby="tab-local">
+<pre>git clone https://github.com/williamblaismedia-create/ridealong &amp;&amp; cd ridealong
+npm ci &amp;&amp; npm run build
+claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"</pre>
+          <p>Starts Chrome with its debugging port and a dedicated profile, generates a secret on first run. Then, in Claude Code: “open example.com and give me the live view”. With ffmpeg installed you get H.264 video; without it, JPEG frames.</p>
+        </div>
+        <div role="tabpanel" id="t-docker" aria-labelledby="tab-docker" hidden>
+<pre>docker build -t ridealong .
+claude mcp add ridealong -- docker run -i --rm -p 9400:9400 -v ridealong-data:/data ridealong</pre>
+          <p>Chrome under Xvfb, ffmpeg, persistent profile in a volume. Add <code>--gpus all -e RIDEALONG_VIDEO_ENCODER=h264_nvenc</code> for NVENC on a host with the NVIDIA runtime.</p>
+        </div>
+        <div role="tabpanel" id="t-server" aria-labelledby="tab-server" hidden>
+<pre>ssh you@server 'git clone … ~/ridealong &amp;&amp; cd ~/ridealong &amp;&amp; npm ci &amp;&amp; npm run build'
+<span class="c"># systemd unit for Chrome + Xvfb, Cloudflare tunnel on port 9400, then on your laptop:</span>
+claude mcp add ridealong -- node ~/ridealong/scripts/ridealong-mcp-relay.mjs</pre>
+          <p>The local relay keeps the MCP session alive across a dead SSH link, and a second Claude Code session follows the first instead of fighting for the port. Full runbook in the repo.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <p class="kicker">questions</p>
+      <h2>Straight answers.</h2>
+      <div class="faq">
+        <details><summary>What is Ridealong?</summary><p>An open-source MCP server for Claude Code. It drives a real Google Chrome over the Chrome DevTools Protocol and streams it live to a page you can watch, point at, pause, approve, or take over from your phone.</p></details>
+        <details><summary>How is it different from Playwright MCP or Chrome DevTools MCP?</summary><p>Those let an agent act in a browser. Ridealong adds the human: a live view, an approval gate, Manual mode with no capture, pointer hints and messages back to the agent, plus console errors, network requests, real tabs and stable refs in the transcript.</p></details>
+        <details><summary>Is what I type in Manual mode visible to Claude?</summary><p>No. Input is relayed straight to Chrome and never stored, logged or exposed to the model. Perception tools refuse to run while you hold the wheel, and password fields never expose values in snapshots. A test suite pins this down.</p></details>
+        <details><summary>Do I need a server?</summary><p>No. One command runs it on the machine Claude drives. Docker and an always-on server with a tunnel are documented for watching from anywhere.</p></details>
+        <details><summary>Does the live view need a GPU?</summary><p>No. With ffmpeg, Ridealong uses NVENC, VideoToolbox on macOS, or software libx264, whichever exists. Without ffmpeg it streams JPEG frames sized to your screen.</p></details>
+        <details><summary>How are links secured?</summary><p>HMAC-signed, expiring after 30 seconds to 1 hour, carried in the URL fragment. A device that opened a valid link keeps a 30-day token so the bare address works. Rotating the secret revokes everything.</p></details>
+        <details><summary>Does it work with other MCP clients?</summary><p>It is a standard stdio MCP server, so any client that speaks MCP can use the tools. The instant channel for messages and approvals is a Claude Code feature; other clients get them at the end of the next tool result.</p></details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="29" fill="none" stroke="#FAF8F5" stroke-width="7"/><circle cx="48" cy="48" r="11" fill="#DA7756"/></svg>RIDEALONG</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">GitHub</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong/blob/main/README.md" rel="noopener">Docs</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong/blob/main/SECURITY.md" rel="noopener">Security</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong/blob/main/CONTRIBUTING.md" rel="noopener">Contribute</a>
+    <span>MIT · Built by <a href="https://wautomatisations.com" rel="noopener">W Automatisations</a>, Montréal</span>
+  </div>
+</footer>
+
+<script>
+  // Copy install command
+  document.getElementById('copy').addEventListener('click', function () {
+    var b = this, t = document.getElementById('cmd').textContent;
+    navigator.clipboard.writeText(t).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400); });
+  });
+  // Star count
+  fetch('https://api.github.com/repos/williamblaismedia-create/ridealong').then(function (r) { return r.json(); }).then(function (j) {
+    if (j && typeof j.stargazers_count === 'number') document.getElementById('stars').textContent = j.stargazers_count.toLocaleString();
+  }).catch(function () {});
+  // Install tabs
+  var tabs = document.querySelectorAll('[role=tab]');
+  tabs.forEach(function (t) { t.addEventListener('click', function () {
+    tabs.forEach(function (o) { o.setAttribute('aria-selected', 'false'); document.getElementById(o.getAttribute('aria-controls')).hidden = true; });
+    t.setAttribute('aria-selected', 'true'); document.getElementById(t.getAttribute('aria-controls')).hidden = false;
+  }); });
+</script>
+</body>
+</html>
