@@ -16,7 +16,7 @@
   <img alt="tests" src="https://img.shields.io/badge/vitest-131%20passing-3E7D5A?style=flat-square">
 </p>
 
-<p align="center"><a href="https://williamblaismedia-create.github.io/ridealong/"><strong>Website</strong></a> · <a href="#quick-start">Quick start</a> · <a href="README.fr.md">Français</a></p>
+<p align="center"><a href="https://williamblaismedia-create.github.io/ridealong/"><strong>Website</strong></a> · <a href="#quick-start">Quick start</a> · <a href="https://williamblaismedia-create.github.io/ridealong/fr/">Site en français</a> · <a href="README.fr.md">README en français</a></p>
 
 <p align="center"><img src="docs/demo.gif" width="880" alt="Ridealong live view: Claude's cursor, the action journal, then Manual mode"></p>
 
