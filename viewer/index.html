@@ -244,6 +244,7 @@
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), var(--shadow-terra-sm); opacity: 0; pointer-events: none;
     transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring); }
   #ask.open { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+  body.asking #hint { opacity: 0; }
   #ask .eyebrow { font: 500 10px/1 var(--font-mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--terra-400); margin-bottom: 10px; }
   #askq { font: 600 16px/1.35 var(--font-sans); letter-spacing: -0.01em; color: var(--warm-25); margin: 0 0 14px; overflow-wrap: anywhere; }
   #ask .row { display: flex; gap: 10px; }
@@ -639,8 +640,8 @@
   // Porte d'approbation.
   var askEl = document.getElementById('ask'), askQ = document.getElementById('askq'), askId = null;
   function onAsk(a) {
-    if (a.done) { if (askId === a.id) { askId = null; askEl.classList.remove('open'); addEntry('pause', a.ok ? 'approuvé' : 'refusé / sans réponse'); } return; }
-    askId = a.id; askQ.textContent = a.question; askEl.classList.add('open');
+    if (a.done) { if (askId === a.id) { askId = null; askEl.classList.remove('open'); document.body.classList.remove('asking'); addEntry('pause', a.ok ? 'approuvé' : 'refusé / sans réponse'); } return; }
+    askId = a.id; askQ.textContent = a.question; askEl.classList.add('open'); document.body.classList.add('asking');
     addEntry('pause', 'demande : ' + a.question);
     try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
   }

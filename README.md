@@ -25,6 +25,25 @@ in the passenger seat.** Claude drives a real Chrome; you open one link and see 
 what it sees, where it clicks, what it typed — and when it hits a login, a
 CAPTCHA or a payment, you **take the wheel** from your phone, then hand it back.
 
+## In Claude Code
+
+Ridealong is an MCP server: Claude calls its tools like any other, but every
+step is visible on the live view, William's pointer and messages come back
+into the transcript, and sensitive actions wait for an approval.
+
+<p align="center"><img src="docs/media/terminal.png" width="880" alt="A Claude Code session using Ridealong: navigate, snapshot, act, console_errors, a channel message from William, ask_approval"></p>
+
+## On your phone
+
+<table align="center" border="0"><tr>
+<td width="62%"><img src="docs/media/liveview.png" alt="Live view on desktop: tabs, Claude's cursor, the action journal"></td>
+<td width="38%"><img src="docs/media/phone.png" alt="Live view on a phone with an approval card: Approuver / Refuser"></td>
+</tr></table>
+
+## Not just another browser MCP
+
+<p align="center"><img src="docs/media/everything.png" width="880" alt="Console errors, network requests with cookies, real tabs, stable refs, approvals and manual mode, live view"></p>
+
 ## Why Ridealong
 
 | | Typical browser MCP | **Ridealong** |
