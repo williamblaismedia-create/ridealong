@@ -608,6 +608,38 @@ describe('LiveView (integration)', () => {
     expect(await new Promise<number>((resolve) => wrong.on('close', (c) => resolve(c)))).toBe(1008);
   });
 
+  // William guides Claude without taking control: a tap in Auto names the
+  // element under the finger; a short message reaches Claude too. Both land
+  // in an inbox drained into the next tool result.
+  it('{t:"point"} resolves the element under the point into the inbox; {t:"say"} lands too', async () => {
+    // Earlier tests may have moved the target or scrolled/resized it: start clean.
+    driver.setPage(driver.context().pages()[0]);
+    await driver.setViewport({ width: 1440, height: 900 });
+    await driver.navigate(env.pageUrl);
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      const box = await driver.page().locator('#go').boundingBox();
+      ws.send(JSON.stringify({ t: 'point', x: Math.round(box!.x + box!.width / 2), y: Math.round(box!.y + box!.height / 2) }));
+      ws.send(JSON.stringify({ t: 'say', text: 'pas celui-là' }));
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && live.peekInbox().length < 2) await new Promise((r) => setTimeout(r, 100));
+      const items = live.drainInbox();
+      expect(items.filter((i) => /pointe/.test(i) && /button/.test(i) && /Go/.test(i)), items.join(' | ')).toHaveLength(1);
+      expect(items.some((i) => /dit : pas celui-là/.test(i))).toBe(true);
+      expect(live.drainInbox()).toEqual([]);
+    } finally { ws.close(); }
+  });
+
+  it('waitInbox resolves as soon as something arrives, or empty on timeout', async () => {
+    expect(await live.waitInbox(200)).toEqual([]);
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      const p = live.waitInbox(3000);
+      ws.send(JSON.stringify({ t: 'say', text: 'vas-y' }));
+      expect((await p).join(' ')).toMatch(/vas-y/);
+    } finally { ws.close(); }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {

@@ -24,6 +24,8 @@ export class RemoteLiveView implements LiveViewLike {
   private everConnected = false;
   private askSeq = 0;
   private pendingAsks = new Map<number, (v: Verdict) => void>();
+  private inbox: string[] = [];
+  private inboxWaiters: Array<() => void> = [];
 
   constructor(private opts: { secret: string; port: number; publicUrl?: string; onOwnerGone?: () => void }) {}
 
@@ -45,6 +47,7 @@ export class RemoteLiveView implements LiveViewLike {
         let m: any; try { m = JSON.parse(raw.toString()); } catch { return; }
         if (m && typeof m.mode === 'string' && (m.mode === 'read' || m.mode === 'input')) this.mode = m.mode;
         if (m && typeof m.paused === 'boolean') this.applyPaused(m.paused);
+        if (m && typeof m.william === 'string') this.pushInbox(m.william);
         if (m && m.answer && typeof m.answer.ref === 'number') { this.pendingAsks.get(m.answer.ref)?.(m.answer.verdict); this.pendingAsks.delete(m.answer.ref); }
       });
       ws.on('error', () => { /* close follows */ });
@@ -86,6 +89,17 @@ export class RemoteLiveView implements LiveViewLike {
   announce(ev: { kind: string; label: string; x?: number; y?: number }): void { this.send({ t: 'announce', ...ev }); }
   isPaused(): boolean { return this.paused; }
   hasViewers(): boolean { return !!(this.ws && this.ws.readyState === WebSocket.OPEN); } // the owner decides; see ask()
+  pushInbox(line: string): void { this.inbox.push(line); if (this.inbox.length > 50) this.inbox.splice(0, this.inbox.length - 50); const w = this.inboxWaiters; this.inboxWaiters = []; for (const r of w) r(); }
+  peekInbox(): string[] { return this.inbox.slice(); }
+  drainInbox(): string[] { const out = this.inbox; this.inbox = []; return out; }
+  waitInbox(timeoutMs: number): Promise<string[]> {
+    if (this.inbox.length) return Promise.resolve(this.drainInbox());
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.inboxWaiters = this.inboxWaiters.filter((r) => r !== wake); resolve(this.drainInbox()); }, timeoutMs);
+      const wake = () => { clearTimeout(timer); resolve(this.drainInbox()); };
+      this.inboxWaiters.push(wake);
+    });
+  }
   ask(question: string, opts: { timeoutMs?: number } = {}): Promise<Verdict> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.resolve('no-viewer');
     const ref = ++this.askSeq;

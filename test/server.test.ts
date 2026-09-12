@@ -99,6 +99,15 @@ describe('buildServer with a liveView', () => {
     expect(out).toMatch(/#token=/); // the link to hand to William
   });
 
+  it('inbox items are appended to the next tool result, and the inbox tool waits for them', async () => {
+    liveView.pushInbox('William dit : test-inbox');
+    const out = await serverWithLive.callTool('state', {});
+    expect(out).toMatch(/\[william\] William dit : test-inbox/);
+    expect(await serverWithLive.callTool('state', {})).not.toMatch(/william/);
+    expect(serverWithLive.listToolNames()).toContain('inbox');
+    expect(await serverWithLive.callTool('inbox', { waitSec: 1 })).toMatch(/rien/);
+  });
+
   it('live_mode flips the LiveView mode', async () => {
     expect(liveView.getMode()).toBe('read');
     await serverWithLive.callTool('live_mode', { mode: 'input' });

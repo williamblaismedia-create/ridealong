@@ -89,16 +89,29 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
     tools.live_stop = { desc: 'Arreter la vue live et invalider son lien. Re-appelable : un live_start ulterieur sert un nouveau lien.', shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
   }
 
+  if (liveView) {
+    tools.inbox = { desc: 'Ce que William a dit ou pointe depuis la vue live (« William dit : … », « William pointe : bouton « Login » »). Ces lignes arrivent aussi d\'elles-memes au bas de chaque resultat d\'outil ; appelle inbox avec waitSec pour ATTENDRE une consigne de William (max 600 s).', shape: { waitSec: z.number().int().min(0).max(600).optional() }, run: async (a) => { const items = await liveView.waitInbox((a.waitSec ?? 0) * 1000); return items.length ? items.map((l) => `[william] ${l}`).join('\n') : '(rien de William pour le moment)'; } };
+  }
+
+  // Every result carries what William said/pointed meanwhile, so Claude sees
+  // it without polling. `inbox` itself drains explicitly (no double print).
+  const run = async (name: string, args: any): Promise<string> => {
+    const out = await tools[name].run(args);
+    if (!liveView || name === 'inbox') return out;
+    const items = liveView.drainInbox();
+    return items.length ? `${out}\n${items.map((l) => `[william] ${l}`).join('\n')}` : out;
+  };
+
   const server = new McpServer({ name: 'scry', version: '0.1.0' });
   for (const [name, t] of Object.entries(tools)) {
-    server.registerTool(name, { description: t.desc, inputSchema: t.shape }, async (args: any) => ({ content: [{ type: 'text', text: await t.run(args) }] }));
+    server.registerTool(name, { description: t.desc, inputSchema: t.shape }, async (args: any) => ({ content: [{ type: 'text', text: await run(name, args) }] }));
   }
 
   return Object.assign(server, {
     listToolNames: () => Object.keys(tools),
     callTool: (name: string, args: any) => {
       if (!tools[name]) throw new Error(`outil inconnu: ${name}`);
-      return tools[name].run(args);
+      return run(name, args);
     },
   });
 }

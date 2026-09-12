@@ -107,6 +107,11 @@ export interface LiveViewLike {
   setViewportSink?(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void;
   /** Ask William on the viewer; resolves with his answer, a timeout, or 'no-viewer'. */
   ask(question: string, opts?: { timeoutMs?: number }): Promise<Verdict>;
+  /** William's pointer hints and messages, oldest first; drain empties. */
+  drainInbox(): string[];
+  peekInbox(): string[];
+  waitInbox(timeoutMs: number): Promise<string[]>;
+  pushInbox(line: string): void;
   /** True when at least one viewer page is attached. */
   hasViewers(): boolean;
 }
@@ -122,6 +127,11 @@ export class LiveView implements LiveViewLike {
   private viewportSink: ((v: { width: number; height: number }) => Promise<void>) | undefined;
   private askSeq = 0;
   private asks = new Map<number, (v: Verdict) => void>();
+  // Inbox: what William tells Claude from the viewer (pointer hints,
+  // messages). Meant FOR Claude, so it flows into tool results; never
+  // written to disk. Capped so a chatty viewer can't grow memory.
+  private inbox: string[] = [];
+  private inboxWaiters: Array<() => void> = [];
   // Control clients: no screencast, they get mode/pause pushes and may set
   // mode, pause, and announce actions (a follower scry server).
   private controls = new Set<WebSocket>();
@@ -155,6 +165,40 @@ export class LiveView implements LiveViewLike {
   }
 
   hasViewers(): boolean { return this.sessions.size > 0; }
+
+  pushInbox(line: string): void {
+    this.inbox.push(line.slice(0, 400));
+    if (this.inbox.length > 50) this.inbox.splice(0, this.inbox.length - 50);
+    this.broadcastTo(this.controls, { william: line.slice(0, 400) }); // followers keep their own inbox
+    const w = this.inboxWaiters; this.inboxWaiters = []; for (const r of w) r();
+  }
+  peekInbox(): string[] { return this.inbox.slice(); }
+  drainInbox(): string[] { const out = this.inbox; this.inbox = []; return out; }
+  waitInbox(timeoutMs: number): Promise<string[]> {
+    if (this.inbox.length) return Promise.resolve(this.drainInbox());
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.inboxWaiters = this.inboxWaiters.filter((r) => r !== wake); resolve(this.drainInbox()); }, timeoutMs);
+      const wake = () => { clearTimeout(timer); resolve(this.drainInbox()); };
+      this.inboxWaiters.push(wake);
+    });
+  }
+
+  /** Describe what is under a page point, for "William pointe : …". */
+  private async describePoint(x: number, y: number): Promise<string> {
+    try {
+      const d = await this.driver.page().evaluate(([px, py]) => {
+        const el = document.elementFromPoint(px, py) as HTMLElement | null;
+        if (!el) return null;
+        const role = el.getAttribute('role') || ({ A: 'link', BUTTON: 'button', INPUT: (el as HTMLInputElement).type === 'checkbox' ? 'checkbox' : 'textbox', SELECT: 'combobox', TEXTAREA: 'textbox', IMG: 'img', H1: 'heading', H2: 'heading', H3: 'heading' } as Record<string, string>)[el.tagName] || el.tagName.toLowerCase();
+        const name = (el.getAttribute('aria-label') || (el as HTMLInputElement).placeholder || el.getAttribute('title') || (el as HTMLImageElement).alt || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+        return { role, name, id: el.id || '' };
+      }, [x, y] as [number, number]);
+      if (!d) return `William pointe (${x},${y}) : rien de cliquable`;
+      return `William pointe : ${d.role}${d.name ? ` « ${d.name} »` : ''}${d.id ? ` #${d.id}` : ''} (${x},${y}) — retrouve-le avec find/snapshot`;
+    } catch {
+      return `William pointe (${x},${y})`;
+    }
+  }
 
   /**
    * Approval gate. The question goes to every viewer as {ask:{id,question}};
@@ -616,6 +660,8 @@ export class LiveView implements LiveViewLike {
         if (t === 'tab') { if (Number.isInteger(rest.id) && this.tabSelector) await this.tabSelector(rest.id).catch(() => {}); return; }
         if (t === 'viewport') { await this.setViewport(rest.w, rest.h); return; }
         if (t === 'answer') { this.answer(rest.id, rest.ok); return; }
+        if (t === 'point') { if (Number.isFinite(rest.x) && Number.isFinite(rest.y)) this.pushInbox(await this.describePoint(Math.round(rest.x), Math.round(rest.y))); return; }
+        if (t === 'say') { if (typeof rest.text === 'string' && rest.text.trim()) this.pushInbox(`William dit : ${rest.text.trim().slice(0, 300)}`); return; }
         // William takes / gives back control from the page itself. The token
         // holder is William (signed, expiring link), and the same switch is
         // what the live_mode tool does; only the mode string is read.

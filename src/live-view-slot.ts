@@ -49,6 +49,7 @@ export class LiveViewSlot implements LiveViewLike {
     owner.setTabSelector(this.tabSelector);
     owner.setViewportSink(this.viewportSink);
     const old = this.follower; this.follower = undefined;
+    for (const line of old?.drainInbox() ?? []) owner.pushInbox(line);
     this.owner = owner; this.current = owner;
     if (old) await old.stop();
     if (!initial) log('maitre de la vue live disparu : cette session reprend le port.');
@@ -73,6 +74,10 @@ export class LiveViewSlot implements LiveViewLike {
   setTabSelector(fn: ((id: number) => Promise<void>) | undefined): void { this.tabSelector = fn; this.owner?.setTabSelector(fn); }
   setViewportSink(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void { this.viewportSink = fn; this.owner?.setViewportSink(fn); }
   hasViewers(): boolean { return this.current.hasViewers(); }
+  pushInbox(line: string): void { this.current.pushInbox(line); }
+  peekInbox(): string[] { return this.current.peekInbox(); }
+  drainInbox(): string[] { return this.current.drainInbox(); }
+  waitInbox(timeoutMs: number): Promise<string[]> { return this.current.waitInbox(timeoutMs); }
   ask(question: string, opts?: { timeoutMs?: number }): Promise<Verdict> { return this.current.ask(question, opts); }
   async stop(): Promise<void> { this.stopped = true; await this.current.stop(); }
 }

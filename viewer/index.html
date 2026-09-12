@@ -188,6 +188,18 @@
     color: var(--warm-25); background: rgba(26, 23, 20, 0.9); border: 1px solid rgba(218, 119, 86, 0.5); border-radius: 6px; padding: 5px 7px;
     max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 
+  #pointmark { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid var(--warm-25); pointer-events: none; opacity: 0; }
+  #pointmark.go { animation: pointgo 700ms var(--ease-out) forwards; }
+  @keyframes pointgo { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2.6); opacity: 0; } }
+  #entries li.point { border-left-color: var(--warm-25); }
+  #entries li.william { border-left-color: var(--warm-25); color: var(--warm-25); }
+  #say { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+  #say input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--border-inverse); background: rgba(255, 255, 255, 0.04);
+    color: var(--warm-25); font: 500 13px/1 var(--font-sans); outline: none; }
+  #say input:focus { border-color: var(--terra-500); box-shadow: var(--ring-focus-inverse); }
+  #say button { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--terra-500); color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  #say button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
   /* Journal des actions : panneau repliable a droite, mono, discret. */
   #journal { position: fixed; top: 0; right: 0; bottom: 0; width: 300px; z-index: 4; display: flex; flex-direction: column;
     background: rgba(26, 23, 20, 0.94); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -314,6 +326,9 @@
               <svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
             </button>
             <span class="sep"></span>
+            <button class="icon-btn" id="saybtn" type="button" title="Dire quelque chose à Claude" aria-label="Dire quelque chose à Claude">
+              <svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4z"/></svg>
+            </button>
             <button class="icon-btn" id="jbtn" type="button" title="Journal des actions" aria-label="Journal des actions">
               <svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg>
             </button>
@@ -336,6 +351,7 @@
   <aside id="journal" aria-label="journal des actions">
     <header><span>Journal</span><button class="icon-btn" id="jclose" type="button" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
     <ul id="entries"><li class="empty"><time></time><span>aucune action encore</span></li></ul>
+    <form id="say" autocomplete="off"><input id="sayin" type="text" maxlength="300" placeholder="Dire quelque chose à Claude…" aria-label="message à Claude"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button></form>
   </aside>
 <script>
 (function () {
@@ -653,6 +669,16 @@
   var jbtn = document.getElementById('jbtn');
   function setJournal(on) { journalOpen = on; document.body.classList.toggle('journal', on); jbtn.classList.toggle('on', on); window.dispatchEvent(new Event('resize')); }
   jbtn.addEventListener('click', function () { setJournal(!journalOpen); });
+  var sayIn = document.getElementById('sayin');
+  document.getElementById('saybtn').addEventListener('click', function () { setJournal(true); setTimeout(function () { sayIn.focus(); }, 250); });
+  document.getElementById('say').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var txt = sayIn.value.trim(); if (!txt) return;
+    send({ t: 'say', text: txt }); addEntry('william', 'toi : ' + txt); sayIn.value = '';
+  });
+  // Typing in the message field must never reach the remote page in Manuel.
+  sayIn.addEventListener('keydown', function (e) { e.stopPropagation(); });
+  sayIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
   document.getElementById('jclose').addEventListener('click', function () { setJournal(false); });
 
   // Pause : fige les actions de Claude sans prendre le controle.
@@ -727,9 +753,20 @@
   function twoPointers() { var ids = Object.keys(pointers); return ids.length === 2 ? [pointers[ids[0]], pointers[ids[1]]] : null; }
 
   var shot = document.getElementById('shot');
+  // En Auto, un tap = « William pointe » : le serveur nomme l'element sous le
+  // doigt et Claude le recoit ; un marqueur confirme sur l'ecran.
+  var pointMark = document.createElement('div'); pointMark.id = 'pointmark'; document.getElementById('shot').appendChild(pointMark);
+  function pointFor(e) {
+    var p = toPage(e.clientX, e.clientY); if (!p) return;
+    send({ t: 'point', x: p.x, y: p.y });
+    var r = img.getBoundingClientRect();
+    pointMark.style.left = (e.clientX - r.left) + 'px'; pointMark.style.top = (e.clientY - r.top) + 'px';
+    pointMark.classList.remove('go'); void pointMark.offsetWidth; pointMark.classList.add('go');
+    addEntry('point', 'tu pointes → Claude');
+  }
   shot.addEventListener('pointerdown', function (e) {
     e.preventDefault();
-    if (mode !== 'input') return;
+    if (mode !== 'input') { if (e.pointerType !== 'mouse' || e.button === 0) pointFor(e); return; }
     if (e.pointerType === 'mouse') { mouse('mousePressed', e.clientX, e.clientY, e); return; }
     try { shot.setPointerCapture(e.pointerId); } catch (x) {}
     pointers[e.pointerId] = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY };
