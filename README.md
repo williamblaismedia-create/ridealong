@@ -37,6 +37,8 @@ into the transcript, and sensitive actions wait for an approval.
 
 ## On your phone
 
+<p align="center"><video src="https://github.com/williamblaismedia-create/ridealong/raw/main/docs/media/ridealong-phone.mp4" width="360" controls muted playsinline></video></p>
+
 <table align="center" border="0"><tr>
 <td width="62%"><img src="docs/media/liveview.png" alt="Live view on desktop: tabs, Claude's cursor, the action journal"></td>
 <td width="38%"><img src="docs/media/phone.png" alt="Live view on a phone with an approval card: Approuver / Refuser"></td>
