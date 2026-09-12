@@ -73,7 +73,7 @@ SCRY_CDP_URL=http://127.0.0.1:9222
 SCRY_DATA_DIR=$HOME/scry-donnees
 SCRY_LIVE_PORT=9400
 SCRY_LIVE_SECRET=CHANGE_ME
-SCRY_LIVE_PUBLIC_URL=https://scry.wautomatisations.com
+SCRY_LIVE_PUBLIC_URL=https://ridealong.wautomatisations.com
 # Résolution du viewport piloté (1920x1080 depuis le 2026-09-12 ; l'écran
 # virtuel Xvfb reste en 1440x900, Chrome rend le viewport émulé en entier).
 SCRY_VIEWPORT_WIDTH=1920
@@ -161,20 +161,20 @@ services publics de w-agent (crm, booking, reels, bridge, tableau,
 marketis). À faire posément. Trois temps : la route DNS (une fois), la
 règle d'ingress, puis un rechargement **sans coupure**.
 
-**6.1 — Route DNS (une seule fois).** Sans ça, `scry.wautomatisations.com`
+**6.1 — Route DNS (une seule fois).** Sans ça, `ridealong.wautomatisations.com`
 ne résout pas (pas de wildcard) :
 
 ```
-/home/will/.local/bin/cloudflared tunnel route dns w-tradingbot scry.wautomatisations.com
+/home/will/.local/bin/cloudflared tunnel route dns w-tradingbot ridealong.wautomatisations.com
 ```
 
 **6.2 — Règle d'ingress.** Éditer `~/.cloudflared/config.yml` et coller
-la règle de `scripts/cloudflared-scry.yml` **avant** la règle catch-all
+la règle de `scripts/cloudflared-ridealong.yml` **avant** la règle catch-all
 finale `- service: http_status:404` (cloudflared prend la première qui
 correspond) :
 
 ```yaml
-  - hostname: scry.wautomatisations.com
+  - hostname: ridealong.wautomatisations.com
     service: http://127.0.0.1:9400
 ```
 
@@ -211,7 +211,7 @@ suffit — mais vérifier `pgrep -af cloudflared` avant.)
 **6.4 — Vérifier :**
 
 ```
-curl -sI https://scry.wautomatisations.com/ | head -1
+curl -sI https://ridealong.wautomatisations.com/ | head -1
 ```
 
 `200` (la page de vue live répond — le chemin atteint bien Scry ; c'est
@@ -226,7 +226,7 @@ n'est pas prise.
 Depuis une session Claude branchée sur Scry (étape 5) :
 
 1. Appeler l'outil `live_start` → il renvoie un lien signé qui expire
-   (directement sur `https://scry.wautomatisations.com/...` grâce à
+   (directement sur `https://ridealong.wautomatisations.com/...` grâce à
    `SCRY_LIVE_PUBLIC_URL`). Le serveur de vue live écoute déjà depuis le
    début de la session ; `live_start` mint le lien (et le ré-ouvre après
    un `live_stop`).
@@ -245,7 +245,14 @@ Depuis une session Claude branchée sur Scry (étape 5) :
 Toute la boucle se fait Mac non touché, et le mot de passe ne passe
 jamais par Claude.
 
-## 8. Dépannage — « Scry se déconnecte »
+## 8. Dépannage
+
+- **Renommage (2026-09-12).** Le produit s'appelle Ridealong ; l'URL publique
+  est `ridealong.wautomatisations.com` (l'ancienne `scry.…` reste une règle
+  d'ingress alias pour les favoris). Les noms câblés `SCRY_*`, `scry.env`,
+  `~/scry`, `scry-chrome.service` et `scry-mcp.sh` sont conservés sur
+  w-agent ; `RIDEALONG_*` est accepté en alias.
+ — « Scry se déconnecte »
 
 Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
 

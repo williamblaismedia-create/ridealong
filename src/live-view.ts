@@ -526,6 +526,19 @@ export class LiveView implements LiveViewLike {
       res.end('method not allowed');
       return;
     }
+    // Static brand assets (favicon, marks) from viewer/brand — names only,
+    // no path traversal, known types only.
+    const path = (req.url ?? '/').split('?')[0];
+    const m = /^\/brand\/([A-Za-z0-9._-]+\.(svg|png))$/.exec(path);
+    if (m) {
+      const file = join(dirname(VIEWER_PATH), 'brand', m[1]);
+      let body: Buffer;
+      try { body = readFileSync(file); } catch { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'content-type': m[2] === 'svg' ? 'image/svg+xml' : 'image/png', 'cache-control': 'public, max-age=86400' });
+      res.end(req.method === 'HEAD' ? undefined : body);
+      return;
+    }
+    if (path !== '/' && path !== '/index.html') { res.writeHead(404); res.end(); return; }
     const html = loadViewerHtml();
     if (html === undefined) {
       res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });

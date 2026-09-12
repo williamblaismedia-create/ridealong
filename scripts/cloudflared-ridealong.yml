@@ -9,10 +9,10 @@
 # L'hostname ci-dessous est un EXEMPLE. William choisit le sous-domaine
 # reel sur le domaine qu'il utilise deja pour ses tunnels w-agent (le
 # meme tunnel qui sert deja marketis et les autres services) — remplacer
-# "scry.wautomatisations.com" par ce choix avant de coller.
+# "ridealong.wautomatisations.com" par ce choix avant de coller.
 #
 # --- Ajouter dans ~/.cloudflared/config.yml, dans la liste "ingress:", AVANT la regle 404 finale ---
-  - hostname: scry.wautomatisations.com
+  - hostname: ridealong.wautomatisations.com
     service: http://127.0.0.1:9400
 # Recharger SANS couper les autres tunnels : PAS de reload/HUP (cloudflared est
 # un service systeme sans ExecReload). DEUX connecteurs servent w-tradingbot

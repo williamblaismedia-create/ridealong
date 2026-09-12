@@ -29,7 +29,7 @@ import { join } from 'node:path';
 
 // Marker for the Claude Code status line (~/.claude/ridealong-statusline.sh):
 // present while this relay has a live scry session, removed on exit.
-const MARKER = process.env.SCRY_RELAY_MARKER ?? join(homedir(), '.claude', 'scry-live.json');
+const MARKER = process.env.SCRY_RELAY_MARKER ?? join(homedir(), '.claude', 'ridealong-live.json');
 function mark(on) {
   try {
     if (on) { mkdirSync(join(homedir(), '.claude'), { recursive: true }); writeFileSync(MARKER, JSON.stringify({ pid: process.pid, at: Date.now(), host: HOST })); }

@@ -640,6 +640,19 @@ describe('LiveView (integration)', () => {
     } finally { ws.close(); }
   });
 
+  it('serves the brand favicon from /brand/ and refuses anything else static', async () => {
+    const base = `http://127.0.0.1:${PORT}`;
+    const ico = await fetch(`${base}/brand/ridealong-mark.svg`);
+    expect(ico.status).toBe(200);
+    expect(ico.headers.get('content-type')).toBe('image/svg+xml');
+    expect((await ico.text())).toContain('<svg');
+    expect((await fetch(`${base}/brand/../package.json`)).status).toBe(404);
+    expect((await fetch(`${base}/brand/nope.txt`)).status).toBe(404);
+    expect((await fetch(`${base}/anything`)).status).toBe(404);
+    const page = await fetch(`${base}/`);
+    expect(await page.text()).toContain('rel="icon"');
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {
