@@ -9,7 +9,7 @@ describe('loadConfig', () => {
     expect(c.viewport).toEqual({ width: 1440, height: 900 });
     expect(c.defaultTimeoutMs).toBe(15000);
     expect(c.readBudgetChars).toBe(8000);
-    expect(c.dataDir).toBe(`${homedir()}/scry-donnees`);
+    expect(c.dataDir).toBe(`${homedir()}/ridealong-data`);
     // No live-view secret is ever invented — unset means live-view stays off.
     expect(c.secret).toBeUndefined();
     expect(c.liveViewPort).toBe(9400);
