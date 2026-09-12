@@ -36,6 +36,11 @@ export interface VideoOpts {
 
 export const VIDEO_MIME = 'video/mp4; codecs="avc1.42E01E"'; // Constrained Baseline 3.0
 
+/** Default bitrate scaled to the frame: ~3 Mb/s at 1440x900, ~8.5 Mb/s at 2560x1440 (UI text needs it). */
+export function defaultBitrateKbps(width: number, height: number): number {
+  return Math.round(3000 * (width * height) / (1440 * 900));
+}
+
 /** ffmpeg argv for the pipeline; exported for tests/inspection. */
 export function ffmpegArgs(o: Required<Pick<VideoOpts, 'fps' | 'bitrateKbps' | 'encoder'>>): string[] {
   const enc = o.encoder === 'h264_nvenc'
@@ -119,7 +124,7 @@ export class VideoStream extends EventEmitter {
 
   private async doStart(): Promise<void> {
     const fps = this.opts.fps ?? 20;
-    const args = ffmpegArgs({ fps, bitrateKbps: this.opts.bitrateKbps ?? 3000, encoder: this.opts.encoder ?? 'h264_nvenc' });
+    const args = ffmpegArgs({ fps, bitrateKbps: this.opts.bitrateKbps ?? defaultBitrateKbps(this.opts.width, this.opts.height), encoder: this.opts.encoder ?? 'h264_nvenc' });
     const proc = spawn(this.opts.ffmpeg ?? 'ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     this.proc = proc;
     this.splitter = new Mp4Splitter();

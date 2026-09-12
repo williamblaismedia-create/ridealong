@@ -25,7 +25,8 @@ export interface Config {
    * Video path (H.264 fMP4 over the live-view websocket, encoded by ffmpeg).
    * SCRY_VIDEO=off disables it (viewers get JPEG frames only). SCRY_FFMPEG
    * (binary), SCRY_VIDEO_ENCODER (h264_nvenc default; libx264 on a box
-   * without an NVIDIA GPU), SCRY_VIDEO_KBPS (3000), SCRY_VIDEO_FPS (20).
+   * without an NVIDIA GPU), SCRY_VIDEO_KBPS (default scales with the viewport:
+   * ~3000 at 1440x900, ~8500 at 2560x1440), SCRY_VIDEO_FPS (20).
    */
   video: false | { ffmpeg?: string; encoder?: string; bitrateKbps?: number; fps?: number };
 }
@@ -67,7 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     video: (env.SCRY_VIDEO ?? 'on').toLowerCase() === 'off' ? false : {
       ffmpeg: env.SCRY_FFMPEG || undefined,
       encoder: env.SCRY_VIDEO_ENCODER || undefined,
-      bitrateKbps: intOr(env.SCRY_VIDEO_KBPS, 3000),
+      bitrateKbps: env.SCRY_VIDEO_KBPS ? intOr(env.SCRY_VIDEO_KBPS, 0) || undefined : undefined, // unset: scales with the viewport
       fps: intOr(env.SCRY_VIDEO_FPS, 20),
     },
   };

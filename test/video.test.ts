@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'node:child_process';
 import { startBrowser } from './helpers.js';
 import { Driver } from '../src/driver.js';
-import { Mp4Splitter, VideoStream, ffmpegArgs } from '../src/video.js';
+import { Mp4Splitter, VideoStream, ffmpegArgs, defaultBitrateKbps } from '../src/video.js';
 
 function box(type: string, payload: Buffer = Buffer.alloc(0)): Buffer {
   const b = Buffer.alloc(8 + payload.length);
@@ -22,6 +22,11 @@ describe('Mp4Splitter (pure)', () => {
     expect(segs).toHaveLength(2);
     expect(segs[0].length).toBe(8 + 12 + 8 + 100);
     expect(segs[1].length).toBe(8 + 12 + 8 + 50);
+  });
+
+  it('default bitrate scales with the frame size (2K gets ~2.8x the 1440x900 budget)', () => {
+    expect(defaultBitrateKbps(1440, 900)).toBe(3000);
+    expect(defaultBitrateKbps(2560, 1440)).toBe(8533);
   });
 
   it('ffmpegArgs targets Constrained Baseline fMP4 with 100ms fragments (what MSE on iOS/Chrome decodes)', () => {
