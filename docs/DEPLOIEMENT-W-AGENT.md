@@ -278,6 +278,16 @@ Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
   `viewer/index.html` et est relue à chaque requête : après un `git pull`
   sur w-agent, un rechargement de la page suffit, pas besoin de `/mcp`. Seul
   un changement du code serveur (`src/*.ts`) demande le reconnect.
+- **Un serveur zombie garde le port 9400.** Vu le 2026-09-12 : un `ssh` tué
+  côté Mac sans fermeture propre laissait la session sshd et le serveur scry
+  vivants sur w-agent (sshd n'avait aucun keepalive) ; la session suivante
+  suivait ce zombie et voyait un écran mort. Deux correctifs : sshd détecte
+  maintenant un client mort en 2 min (`/etc/ssh/sshd_config.d/scry-keepalive.conf`,
+  ClientAliveInterval 30 × 4), et un suiveur dont le maître disparaît
+  **reprend le port lui-même** (LiveViewSlot, message « reprend le port » sur
+  stderr). Diagnostic : `ps -eo pid,etimes,cmd | grep server.js` et
+  `ss -tlnp | grep 9400` ; un serveur bien plus vieux que la session Claude
+  courante est suspect.
 - **Deux sessions Claude Code en même temps.** Chaque session lance son
   serveur scry sur w-agent, toutes sur le même Chrome et le même port 9400.
   Depuis le 2026-09-12, la seconde ne perd plus rien : elle voit

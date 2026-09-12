@@ -9,8 +9,8 @@ import { Perception, type StateHeader } from './perception.js';
 import { Action } from './action.js';
 import { Network } from './network.js';
 import { Tabs, type TabInfo } from './tabs.js';
-import { LiveView, type LiveViewLike } from './live-view.js';
-import { RemoteLiveView } from './live-view-remote.js';
+import { type LiveViewLike } from './live-view.js';
+import { LiveViewSlot } from './live-view-slot.js';
 
 function headerLine(s: StateHeader): string {
   return `[state] url=${s.url} title=${JSON.stringify(s.title)} ready=${s.ready} dialog=${s.dialogOpen}`;
@@ -101,24 +101,14 @@ export async function main(): Promise<void> {
 
   if (cfg.secret) {
     try {
-      const owner = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video });
-      await owner.start(cfg.liveViewPort);
-      liveView = owner;
+      // Owner of the live-view port, or follower of the session that owns it —
+      // and promoted to owner if that session goes away (see LiveViewSlot).
+      liveView = await LiveViewSlot.create(driver, { secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video }, (m) => console.error('[scry] ' + m));
     } catch (e) {
-      // Another scry server (another Claude Code session on the same Chrome)
-      // already owns the live-view port: follow it as a control client so
-      // this session keeps its live_* tools — same links, same screen, one
-      // shared mode/pause. Any other failure degrades to a core server
-      // without live_* tools. Never log the secret value, only the error.
-      if (/EADDRINUSE/.test((e as Error).message)) {
-        const follower = new RemoteLiveView({ secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl });
-        await follower.ensureStarted();
-        liveView = follower;
-        console.error('[scry] vue live deja servie par une autre session : cette session la suit (mode controle).');
-      } else {
-        console.error('[scry] live-view indisponible : ' + (e as Error).message);
-        liveView = undefined;
-      }
+      // Any other failure degrades to a core server without live_* tools.
+      // Never log the secret value, only the error.
+      console.error('[scry] live-view indisponible : ' + (e as Error).message);
+      liveView = undefined;
     }
   } else {
     console.error('[scry] SCRY_LIVE_SECRET absent : vue live desactivee.');

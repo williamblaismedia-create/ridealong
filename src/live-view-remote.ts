@@ -21,7 +21,9 @@ export class RemoteLiveView implements LiveViewLike {
   private closing = false;
   private retry: NodeJS.Timeout | undefined;
 
-  constructor(private opts: { secret: string; port: number; publicUrl?: string }) {}
+  private everConnected = false;
+
+  constructor(private opts: { secret: string; port: number; publicUrl?: string; onOwnerGone?: () => void }) {}
 
   async ensureStarted(): Promise<void> {
     this.closing = false;
@@ -36,18 +38,25 @@ export class RemoteLiveView implements LiveViewLike {
       this.ws = ws;
       let settled = false;
       const done = () => { if (!settled) { settled = true; resolve(); } };
-      ws.on('open', () => { done(); });
+      ws.on('open', () => { this.everConnected = true; done(); });
       ws.on('message', (raw) => {
         let m: any; try { m = JSON.parse(raw.toString()); } catch { return; }
         if (m && typeof m.mode === 'string' && (m.mode === 'read' || m.mode === 'input')) this.mode = m.mode;
         if (m && typeof m.paused === 'boolean') this.applyPaused(m.paused);
       });
       ws.on('error', () => { /* close follows */ });
+      let opened = false;
+      ws.once('open', () => { opened = true; });
       ws.on('close', () => {
         if (this.ws === ws) this.ws = undefined;
         this.applyPaused(false); // never leave a tool call hanging on a gone owner
         done();
-        if (!this.closing) this.retry = setTimeout(() => { void this.connect(); }, 2000);
+        if (this.closing) return;
+        // A reconnect that never opened means nobody listens on the port any
+        // more: the owner is gone (its session ended, or it was a zombie that
+        // got killed). Tell the slot so this server can take the port itself.
+        if (!opened && this.everConnected) this.opts.onOwnerGone?.();
+        this.retry = setTimeout(() => { void this.connect(); }, 2000);
       });
       // Don't hang a tool call on an owner that never answers.
       setTimeout(done, 3000);
