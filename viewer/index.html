@@ -3,32 +3,95 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="dark">
 <title>Scry — vue live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: dark; }
+  /* Jetons W Automatisations (source : W DASHBOARD/design-system/tokens.css).
+     Le viewer est une surface inverse : canevas noir chaud, encre creme,
+     terracotta reserve a l'action. */
+  :root {
+    --terra-400: #DF8B68; --terra-500: #DA7756; --terra-600: #C8603D; --terra-700: #A94B2D;
+    --warm-25: #FAF8F5; --warm-200: #DDD6CB; --warm-400: #A69C8D; --warm-500: #82796C;
+    --warm-700: #463F38; --warm-800: #2A2622; --warm-900: #1A1714; --warm-950: #0E0C0A;
+    --green-500: #3E7D5A; --amber-500: #C5882A;
+    --border-inverse: rgba(255, 255, 255, 0.14);
+    --font-sans: "Montserrat", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --r-md: 14px; --r-pill: 999px;
+    --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
+    --shadow-terra-sm: 0 6px 16px rgba(218, 119, 86, 0.30);
+    --ring-focus-inverse: 0 0 0 3px rgba(218, 119, 86, 0.55);
+    --ease-out: cubic-bezier(0.16, 1, 0.30, 1);
+    --ease-spring: cubic-bezier(0.34, 1.4, 0.50, 1);
+    --dur-fast: 150ms; --dur: 240ms;
+    --lift: translateY(-2px); --lift-press: translateY(0) scale(0.985);
+    --bar: 56px;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #0b0d10; color: #e6e6e6;
-    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  #bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-    background: #14181d; border-bottom: 1px solid #232a31; position: sticky; top: 0; }
-  #dot { width: 9px; height: 9px; border-radius: 50%; background: #555; flex: 0 0 auto; }
-  #dot.on { background: #45d17a; }
-  #mode { font-weight: 600; }
-  #mode.read { color: #7fd1ff; }
-  #mode.input { color: #ffcf5c; }
-  #hint { color: #8a939b; margin-left: auto; }
-  #stage { display: flex; justify-content: center; align-items: flex-start; padding: 8px;
-    height: calc(100% - var(--bar, 41px)); }
-  #screen { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; background: #000;
-    touch-action: none; border-radius: 6px; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; background: var(--warm-950); color: var(--warm-25);
+    font: 500 14px/1.4 var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+  /* Barre : etiquette mono a gauche, action en pilule a droite. */
+  #bar { display: flex; align-items: center; gap: 12px; min-height: var(--bar); padding: 8px 16px;
+    background: var(--warm-900); border-bottom: 1px solid var(--border-inverse); position: sticky; top: 0; z-index: 2; }
+  #brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warm-500); flex: 0 0 auto;
+    transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out); }
+  #dot.on { background: var(--green-500); box-shadow: 0 0 0 4px rgba(62, 125, 90, 0.22); }
+  #eyebrow { font: 500 11px/1 var(--font-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--warm-400); white-space: nowrap; }
+  #mode { font: 600 13px/1 var(--font-sans); letter-spacing: -0.015em; white-space: nowrap;
+    padding: 6px 10px; border-radius: var(--r-pill); border: 1px solid var(--border-inverse); color: var(--warm-200);
+    transition: color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out); }
+  #mode.input { color: var(--warm-25); border-color: var(--terra-500); background: rgba(218, 119, 86, 0.16); }
+  #hint { color: var(--warm-400); font-size: 13px; margin-left: auto; text-align: right; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* L'action : pilule terracotta pleine pour prendre le controle, contour
+     pour le rendre. 44px de haut minimum pour le pouce. */
+  #toggle { flex: 0 0 auto; font: 600 14px/1 var(--font-sans); letter-spacing: -0.01em; min-height: 40px; padding: 0 18px;
+    border-radius: var(--r-pill); border: 1px solid var(--terra-500); background: var(--terra-500); color: #fff; cursor: pointer;
+    touch-action: manipulation; box-shadow: var(--shadow-terra-sm);
+    transition: transform var(--dur-fast) var(--ease-spring), background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
+  #toggle:hover { background: var(--terra-600); transform: var(--lift); }
+  #toggle:active { transform: var(--lift-press); }
+  #toggle:focus-visible { outline: none; box-shadow: var(--ring-focus-inverse); }
+  #toggle:disabled { opacity: 0.45; cursor: default; transform: none; box-shadow: none; }
+  #toggle.input { background: transparent; color: var(--warm-25); border-color: var(--border-inverse); box-shadow: none; }
+  #toggle.input:hover { border-color: var(--warm-400); background: rgba(255, 255, 255, 0.05); }
+
+  /* Scene : l'ecran distant, coins doux, ombre chaude ; liseret terracotta
+     quand William a le controle. */
+  #stage { display: flex; justify-content: center; align-items: flex-start; padding: 12px 16px 16px; height: calc(100% - var(--bar)); }
+  #screen { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; background: var(--warm-900);
+    border-radius: var(--r-md); box-shadow: var(--shadow-md); outline: 2px solid transparent; outline-offset: 3px;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    transition: outline-color var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
+  body.input #screen { outline-color: var(--terra-500); cursor: crosshair; }
+  body.off #screen { opacity: 0.55; }
   #kb { position: absolute; opacity: 0; width: 1px; height: 1px; border: 0; padding: 0; }
+
+  @media (max-width: 520px) {
+    #eyebrow { display: none; }
+    #hint { display: none; }
+    #bar { gap: 8px; padding: 8px 12px; }
+    #mode { font-size: 12px; padding: 6px 9px; margin-right: auto; }
+    #toggle { font-size: 13px; padding: 0 14px; }
+    #stage { padding: 8px; }
+  }
 </style>
 </head>
 <body>
   <div id="bar">
-    <span id="dot"></span>
-    <span>mode : <span id="mode" class="read">…</span></span>
+    <div id="brand">
+      <span id="dot"></span>
+      <span id="eyebrow">Scry · vue live</span>
+    </div>
+    <span id="mode" class="read">…</span>
     <span id="hint"></span>
+    <button id="toggle" type="button" disabled>Prendre le contrôle</button>
     <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="capture clavier">
   </div>
   <div id="stage"><img id="screen" alt="vue live"></div>
@@ -53,6 +116,7 @@
   var dot = document.getElementById('dot');
   var hint = document.getElementById('hint');
   var kb = document.getElementById('kb');
+  var toggle = document.getElementById('toggle');
   var frameW = 0, frameH = 0, mode = 'read';
 
   // Physical pixels this device can show for the frame (stage size x DPR):
@@ -82,12 +146,14 @@
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
     var s = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token) + '&w=' + vs.w + '&h=' + vs.h);
     ws = s;
-    s.onopen = function () { retryMs = 1000; dot.classList.add('on'); hint.textContent = mode === 'input' ? 'vos clics/frappes vont au navigateur' : ''; };
+    s.onopen = function () { retryMs = 1000; dot.classList.add('on'); document.body.classList.remove('off'); toggle.disabled = false; setMode(mode); };
     s.onerror = function () { /* no payload logged */ };
     s.onclose = function (ev) {
       dot.classList.remove('on');
-      if (ev && ev.code === 1008) { gaveUp = true; try { sessionStorage.removeItem(KEY); } catch (e) {} hint.textContent = 'lien expire — demande un nouveau lien'; return; }
-      hint.textContent = 'reconnexion…';
+      document.body.classList.add('off');
+      toggle.disabled = true;
+      if (ev && ev.code === 1008) { gaveUp = true; try { sessionStorage.removeItem(KEY); } catch (e) {} modeEl.textContent = 'Lien expiré'; hint.textContent = 'demande un nouveau lien à Claude'; return; }
+      hint.textContent = 'reconnexion…'; modeEl.textContent = 'Hors ligne';
       retryTimer = setTimeout(connect, retryMs);
       retryMs = Math.min(10000, retryMs * 2);
     };
@@ -120,11 +186,22 @@
 
   function setMode(m) {
     mode = m;
-    modeEl.textContent = m === 'input' ? 'passe-la-main (saisie relayee)' : 'lecture seule';
+    modeEl.textContent = m === 'input' ? 'Vous avez le contrôle' : 'Claude pilote';
     modeEl.className = m;
-    hint.textContent = m === 'input' ? 'vos clics/frappes vont au navigateur' : '';
+    document.body.classList.toggle('input', m === 'input');
+    hint.textContent = m === 'input' ? 'vos clics et frappes vont au navigateur' : 'lecture seule';
+    toggle.textContent = m === 'input' ? 'Rendre le contrôle' : 'Prendre le contrôle';
+    toggle.className = m;
   }
   setMode('read');
+
+  // Take / give back control from the page itself (the same switch as the
+  // live_mode tool). Enabled only while connected; the server confirms the
+  // new mode with a {mode} push, which is what actually flips the UI.
+  toggle.addEventListener('click', function () {
+    send({ t: 'mode', mode: mode === 'input' ? 'read' : 'input' });
+    if (mode !== 'input') { try { kb.focus(); } catch (x) {} }
+  });
 
   function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 

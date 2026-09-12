@@ -340,6 +340,10 @@ export class LiveView {
         const msg = JSON.parse(raw.toString());
         const { t, ...rest } = msg;
         if (t === 'view') { resize({ w: rest.w, h: rest.h }); return; }
+        // William takes / gives back control from the page itself. The token
+        // holder is William (signed, expiring link), and the same switch is
+        // what the live_mode tool does; only the mode string is read.
+        if (t === 'mode') { if (rest.mode === 'read' || rest.mode === 'input') this.setMode(rest.mode); return; }
         if (this.mode !== 'input') return; // read mode: input is ignored entirely
         if (t === 'mouse') await cdp!.send('Input.dispatchMouseEvent', rest);
         else if (t === 'key') await cdp!.send('Input.dispatchKeyEvent', rest);

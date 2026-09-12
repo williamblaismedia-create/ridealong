@@ -312,6 +312,54 @@ describe('LiveView (integration)', () => {
     }
   });
 
+  // William can take the wheel himself from the page: a {t:'mode'} message
+  // from a token holder flips the server mode exactly like the live_mode
+  // tool does, and the change is broadcast to every viewer.
+  it('a viewer can toggle the mode itself with {t:"mode"} (take / give back the wheel)', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      expect(live.getMode()).toBe('read');
+      const pushed = new Promise<any>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no mode push within 2s')), 2000);
+        ws.on('message', (data) => {
+          let m: any; try { m = JSON.parse(data.toString()); } catch { return; }
+          if (m && m.mode === 'input' && m.data === undefined) { clearTimeout(timer); resolve(m); }
+        });
+      });
+      ws.send(JSON.stringify({ t: 'mode', mode: 'input' }));
+      await pushed;
+      expect(live.getMode()).toBe('input');
+      ws.send(JSON.stringify({ t: 'mode', mode: 'garbage' }));
+      await new Promise((r) => setTimeout(r, 200));
+      expect(live.getMode()).toBe('input'); // an invalid value is ignored
+      ws.send(JSON.stringify({ t: 'mode', mode: 'read' }));
+      await new Promise((r) => setTimeout(r, 200));
+      expect(live.getMode()).toBe('read');
+    } finally {
+      live.setMode('read');
+      ws.close();
+    }
+  });
+
+  it('the viewer page has a toggle button that takes and gives back the wheel', async () => {
+    const lv = new LiveView(driver, { secret });
+    const { url } = await lv.start(PORT + 4);
+    const viewer = await driver.context().newPage();
+    try {
+      await viewer.goto(url(300));
+      await viewer.waitForSelector('#dot.on', { timeout: 5000 });
+      await viewer.click('#toggle');
+      await viewer.waitForSelector('#mode.input', { timeout: 3000 });
+      expect(lv.getMode()).toBe('input');
+      await viewer.click('#toggle');
+      await viewer.waitForSelector('#mode.read', { timeout: 3000 });
+      expect(lv.getMode()).toBe('read');
+    } finally {
+      await viewer.close().catch(() => {});
+      await lv.stop();
+    }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {
