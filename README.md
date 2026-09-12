@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/wautomatisations/scry/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/wautomatisations/scry/ci.yml?label=tests&style=flat-square"></a>
+  <a href="https://github.com/williamblaismedia-create/scry/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/williamblaismedia-create/scry/ci.yml?label=tests&style=flat-square"></a>
   <img alt="MIT" src="https://img.shields.io/badge/license-MIT-DA7756?style=flat-square">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-1A1714?style=flat-square">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-1A1714?style=flat-square">
@@ -43,7 +43,7 @@ CAPTCHA or a payment, you **take the wheel** from your phone, then hand it back.
 **On the machine Claude drives** — nothing to host:
 
 ```bash
-git clone https://github.com/wautomatisations/scry && cd scry && npm ci && npm run build
+git clone https://github.com/williamblaismedia-create/scry && cd scry && npm ci && npm run build
 claude mcp add scry -- "$PWD/scripts/scry-local.sh"
 ```
 

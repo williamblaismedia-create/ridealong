@@ -28,9 +28,9 @@
   "author": "William Blais <williamblaismedia@gmail.com> (https://wautomatisations.com)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/wautomatisations/scry.git"
+    "url": "https://github.com/williamblaismedia-create/scry.git"
   },
-  "homepage": "https://github.com/wautomatisations/scry#readme",
+  "homepage": "https://github.com/williamblaismedia-create/scry#readme",
   "keywords": [
     "mcp",
     "claude",
