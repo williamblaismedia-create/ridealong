@@ -54,7 +54,8 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
   const tell = (kind: string, label: string): void => { liveView?.announce({ kind, label }); };
 
   const tools: Record<string, Tool> = {
-    navigate: { desc: 'Naviguer l\'onglet cible vers une URL absolue et attendre le chargement du DOM. Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => { await gate(); tell('navigate', `navigate ${a.url}`); return headerLine(await perception.navigate(a.url)); } },
+    navigate: { desc: 'Naviguer l\'onglet cible vers une URL absolue et attendre le chargement du DOM, sans cache HTTP ni service worker (contenu toujours a jour). Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => { await gate(); tell('navigate', `navigate ${a.url}`); return headerLine(await perception.navigate(a.url)); } },
+    reload: { desc: 'Recharger l\'onglet cible (rechargement complet : le cache HTTP et les service workers sont contournes sur tous les onglets, donc un site que tu viens de deployer s\'affiche a jour). Renvoie l\'entete [state].', shape: {}, run: async () => { await gate(); tell('navigate', 'reload'); await perception.driver.reload(); return headerLine(await perception.state()); } },
     state: { desc: 'Renvoyer l\'entete [state] courant de l\'onglet cible : url, titre, pret, et si un dialogue natif est ouvert.', shape: {}, run: async () => headerLine(await perception.state()) },
     snapshot: { desc: 'Arbre d\'accessibilite elague de l\'onglet cible, chaque element portant une [ref] stable pour agir par reference. Les grands arbres sont ecrits sur disque (un chemin est renvoye). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
     find: { desc: 'Trouver les elements de l\'onglet cible dont le role/nom correspond a une requete ; renvoie leurs [ref]. Suspendu tant que la vue live est en mode input.', shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
@@ -101,7 +102,7 @@ export async function main(): Promise<void> {
     const v = JSON.parse(readFileSync(viewportFile, 'utf8'));
     if (Number.isInteger(v.width) && Number.isInteger(v.height) && v.width >= 640 && v.height >= 400) viewport = { width: v.width, height: v.height };
   } catch { /* none saved */ }
-  const driver = await Driver.connect(cfg.cdpUrl, { viewport, defaultTimeoutMs: cfg.defaultTimeoutMs });
+  const driver = await Driver.connect(cfg.cdpUrl, { viewport, defaultTimeoutMs: cfg.defaultTimeoutMs, browserCache: cfg.browserCache });
   const store = new ArtifactStore(cfg.dataDir);
   const network = new Network(driver, store); network.start();
   const perception = new Perception(driver, store, cfg.readBudgetChars);

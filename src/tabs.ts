@@ -21,6 +21,7 @@ export class Tabs {
   async open(url: string): Promise<number> {
     const p = await this.driver.context().newPage();
     this.driver.setPage(p);
+    await this.driver.cacheReady(p); // bypass in place before the first load
     await p.goto(url, { waitUntil: 'domcontentloaded' });
     return this.driver.context().pages().indexOf(p);
   }

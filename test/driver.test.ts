@@ -12,6 +12,22 @@ beforeAll(async () => {
 afterAll(async () => { await driver.close(); await env.stop(); });
 
 describe('Driver', () => {
+  // Deployed apps came back stale after a deploy: Chrome served its HTTP
+  // cache (and service workers). Every target now bypasses both, like the
+  // DevTools "Disable cache" switch, so Claude always sees the live site.
+  it('bypasses the HTTP cache: a max-age=3600 page shows a fresh value on every navigate', async () => {
+    const url = `${env.pageUrl}counter`;
+    await driver.navigate(url);
+    const a = await driver.evaluate(() => document.getElementById('n')!.textContent);
+    await driver.navigate(env.pageUrl);
+    await driver.navigate(url);
+    const b = await driver.evaluate(() => document.getElementById('n')!.textContent);
+    expect(Number(b)).toBe(Number(a) + 1);
+    await driver.reload();
+    const c = await driver.evaluate(() => document.getElementById('n')!.textContent);
+    expect(Number(c)).toBe(Number(b) + 1);
+  });
+
   it('setViewport resizes the current page, applies to later targets, and emits "viewport"', async () => {
     const seen: any[] = [];
     driver.on('viewport', (v) => seen.push(v));

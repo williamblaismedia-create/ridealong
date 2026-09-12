@@ -267,6 +267,11 @@ Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
   30 s, rejoue l'`initialize` du client vers le nouveau serveur et vide la
   file des appels en attente. Claude Code ne voit jamais la coupure. Sans le
   relais, le remède reste `/mcp` → reconnecter `scry`.
+- **Un site déployé s'affiche encore en ancienne version.** C'était le cache
+  HTTP de Chrome et les service workers des apps. Depuis le 2026-09-12, chaque
+  onglet cible contourne les deux (équivalent de « Disable cache » dans les
+  DevTools), et l'outil `reload` fait un rechargement complet.
+  `SCRY_BROWSER_CACHE=on` rétablit le cache si un site en a besoin.
 - **Multi-onglet.** Depuis le 2026-09-12, perception, action et vue live
   suivent un onglet **cible** que `tabs_select` / `tabs_open` déplacent, et
   qu'un tap sur une chip du viewer déplace aussi. Après un changement, Claude

@@ -31,8 +31,12 @@ export class Driver extends EventEmitter {
   private dialogHandled = false;
   private dialogOpen = false;
   private wired = new WeakSet<Page>();
+  private cacheSetup = new WeakMap<Page, Promise<void>>();
 
-  private constructor(private browser: Browser, private _page: Page, private opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number }) {
+  /** Resolves once the cache bypass is in place for that page (tests/first navigation). */
+  cacheReady(page: Page = this._page): Promise<void> { return this.cacheSetup.get(page) ?? Promise.resolve(); }
+
+  private constructor(private browser: Browser, private _page: Page, private opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number; browserCache?: boolean }) {
     super();
   }
 
@@ -40,6 +44,20 @@ export class Driver extends EventEmitter {
     if (this.wired.has(page)) return;
     this.wired.add(page);
     page.setDefaultTimeout(this.opts.defaultTimeoutMs);
+    // Fresh content on every navigation. Claude tests sites it just deployed;
+    // Chrome's HTTP cache and the apps' service workers were serving the
+    // previous build ("il faut un rechargement forcé"). This is DevTools'
+    // "Disable cache" + "Bypass for network", per target page, kept for the
+    // page's life (the CDP session must stay attached for it to hold).
+    if (this.opts.browserCache !== true) {
+      const p = page.context().newCDPSession(page).then(async (cdp) => {
+        await cdp.send('Network.enable').catch(() => {});
+        await cdp.send('Network.setCacheDisabled', { cacheDisabled: true }).catch(() => {});
+        await cdp.send('Network.setBypassServiceWorker', { bypass: true }).catch(() => {});
+        page.once('close', () => { void cdp.detach().catch(() => {}); });
+      }).catch(() => { /* page gone before we attached */ });
+      this.cacheSetup.set(page, p);
+    }
     // Native dialogs must never freeze the session: auto-dismiss, record that one
     // appeared, and track live open/closed state (dialogOpen is only true while a
     // dialog is actually up — it must not stick true after dismissal).
@@ -70,13 +88,14 @@ export class Driver extends EventEmitter {
     this.emit('page', page);
   }
 
-  static async connect(cdpUrl: string, opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number }): Promise<Driver> {
+  static async connect(cdpUrl: string, opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number; browserCache?: boolean }): Promise<Driver> {
     const browser = await chromium.connectOverCDP(cdpUrl);
     const context = browser.contexts()[0] ?? (await browser.newContext());
     const page = context.pages()[0] ?? (await context.newPage());
     await page.setViewportSize(opts.viewport);
     const driver = new Driver(browser, page, opts);
     driver.wire(page);
+    await driver.cacheReady(page);
     return driver;
   }
 
@@ -88,6 +107,11 @@ export class Driver extends EventEmitter {
 
   async navigate(url: string): Promise<void> {
     await withRetry(() => this._page.goto(url, { waitUntil: 'domcontentloaded' }));
+  }
+
+  /** Reload the target. With the cache bypass above this is always a hard reload. */
+  async reload(): Promise<void> {
+    await withRetry(() => this._page.reload({ waitUntil: 'domcontentloaded' }));
   }
 
   async waitReady(): Promise<void> {

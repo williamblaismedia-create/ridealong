@@ -21,6 +21,8 @@ export interface Config {
    * viewer's own screen (see LiveView / screencastParams).
    */
   liveQuality: number;
+  /** SCRY_BROWSER_CACHE=on keeps Chrome's HTTP cache / service workers. Default: bypassed (fresh content after every deploy). */
+  browserCache: boolean;
   /**
    * Video path (H.264 fMP4 over the live-view websocket, encoded by ffmpeg).
    * SCRY_VIDEO=off disables it (viewers get JPEG frames only). SCRY_FFMPEG
@@ -65,6 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     liveViewPort: intOr(env.SCRY_LIVE_PORT, 9400),
     livePublicUrl: env.SCRY_LIVE_PUBLIC_URL,
     liveQuality: Math.min(100, Math.max(1, intOr(env.SCRY_LIVE_QUALITY, 85))),
+    browserCache: (env.SCRY_BROWSER_CACHE ?? 'off').toLowerCase() === 'on',
     video: (env.SCRY_VIDEO ?? 'on').toLowerCase() === 'off' ? false : {
       ffmpeg: env.SCRY_FFMPEG || undefined,
       encoder: env.SCRY_VIDEO_ENCODER || undefined,
