@@ -245,6 +245,15 @@ Depuis une session Claude branchée sur Scry (étape 5) :
 Toute la boucle se fait Mac non touché, et le mot de passe ne passe
 jamais par Claude.
 
+## 7bis. Canal Claude Code (messages instantanés)
+
+Le serveur déclare la capacité `claude/channel` : ce que William dit, pointe,
+sa prise de contrôle et ses pauses sont poussés dans la conversation dès
+qu'ils arrivent, même si Claude est inactif. Il faut lancer Claude avec
+`claude --dangerously-load-development-channels server:ridealong`
+(aperçu de recherche, disponible sur Max). Sans le drapeau, les mêmes lignes
+arrivent au bas du prochain résultat d'outil.
+
 ## 8. Dépannage
 
 - **Renommage (2026-09-12).** Le produit s'appelle Ridealong ; l'URL publique

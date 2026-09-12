@@ -11,6 +11,7 @@ import { Perception } from '../src/perception.js';
 import { Action } from '../src/action.js';
 import { Network } from '../src/network.js';
 import { buildServer } from '../src/server.js';
+import { LiveView } from '../src/live-view.js';
 
 // Exercises the ACTUAL MCP surface (server.connect + a real Client over an
 // in-memory transport pair), not the callTool/listToolNames shims that bypass
@@ -61,5 +62,35 @@ describe('MCP transport integration', () => {
     const text = res.content.map((c: any) => c.text).join('');
     expect(text).toMatch(/^\[state\] url=/);
     expect(text).toContain('button "Go"');
+  });
+});
+
+describe('Claude Code channel (server -> conversation pushes)', () => {
+  it('declares claude/channel and pushes a notification when William says/points/takes control', async () => {
+    const store = new ArtifactStore(mkdtempSync(join(tmpdir(), 'scry-')));
+    const perception = new Perception(driver, store, 8000);
+    const live = new LiveView(driver, { secret: 'chan-secret' });
+    await live.start(9431);
+    const server = buildServer({ perception, action: new Action(driver), network: new Network(driver, store), liveView: live });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const c = new Client({ name: 'chan-client', version: '0' });
+    const got: any[] = [];
+    c.fallbackNotificationHandler = async (n) => { got.push(n); };
+    await Promise.all([server.connect(st), c.connect(ct)]);
+    try {
+      expect(c.getServerCapabilities()?.experimental).toHaveProperty('claude/channel');
+      live.pushInbox('William dit : allo');
+      live.setMode('input');
+      await new Promise((r) => setTimeout(r, 300));
+      const chan = got.filter((n) => n.method === 'notifications/claude/channel');
+      expect(chan.length).toBeGreaterThanOrEqual(2);
+      expect(chan[0].params.content).toContain('allo');
+      expect(chan[0].params.meta.kind).toBe('inbox');
+      expect(chan.some((n) => n.params.meta.kind === 'mode' && /Manuel/.test(n.params.content))).toBe(true);
+    } finally {
+      live.setMode('read');
+      await c.close();
+      await live.stop();
+    }
   });
 });

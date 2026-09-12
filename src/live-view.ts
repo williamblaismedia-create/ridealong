@@ -114,6 +114,8 @@ export interface LiveViewLike {
   pushInbox(line: string): void;
   /** True when at least one viewer page is attached. */
   hasViewers(): boolean;
+  /** Something William did that Claude should hear about NOW (inbox line, mode change, pause). */
+  setEventListener?(fn: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined): void;
 }
 
 export class LiveView implements LiveViewLike {
@@ -132,6 +134,9 @@ export class LiveView implements LiveViewLike {
   // written to disk. Capped so a chatty viewer can't grow memory.
   private inbox: string[] = [];
   private inboxWaiters: Array<() => void> = [];
+  private eventListener: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined;
+  setEventListener(fn: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined): void { this.eventListener = fn; }
+  private fire(kind: 'inbox' | 'mode' | 'pause', text: string): void { try { this.eventListener?.({ kind, text }); } catch { /* observer */ } }
   // Control clients: no screencast, they get mode/pause pushes and may set
   // mode, pause, and announce actions (a follower ridealong server).
   private controls = new Set<WebSocket>();
@@ -171,6 +176,7 @@ export class LiveView implements LiveViewLike {
     if (this.inbox.length > 50) this.inbox.splice(0, this.inbox.length - 50);
     this.broadcastTo(this.controls, { william: line.slice(0, 400) }); // followers keep their own inbox
     const w = this.inboxWaiters; this.inboxWaiters = []; for (const r of w) r();
+    this.fire('inbox', line.slice(0, 400));
   }
   peekInbox(): string[] { return this.inbox.slice(); }
   drainInbox(): string[] { const out = this.inbox; this.inbox = []; return out; }
@@ -354,7 +360,9 @@ export class LiveView implements LiveViewLike {
 
   /** Switch between read-only streaming and hand-the-wheel input relay. */
   setMode(mode: 'read' | 'input'): void {
+    const changed = this.mode !== mode;
     this.mode = mode;
+    if (changed) this.fire('mode', mode === 'input' ? 'William a pris le contrôle (Manuel) : perception suspendue, attends qu\'il rende la main.' : 'William a rendu le contrôle (Auto) : tu peux reprendre.');
     // Push the new mode to every attached viewer NOW. The mode also rides on
     // each screencast frame, but a static login page produces no frames, so
     // without this the phone would stay on 'read' and drop William's taps —
@@ -424,6 +432,7 @@ export class LiveView implements LiveViewLike {
     if (this.paused === on) { this.broadcast({ paused: on }); return; }
     this.paused = on;
     this.broadcast({ paused: on });
+    this.fire('pause', on ? 'William a mis en pause : tes actions attendent.' : 'William a repris : tu peux continuer.');
     if (!on) { const w = this.pauseWaiters; this.pauseWaiters = []; for (const r of w) r(); }
   }
 

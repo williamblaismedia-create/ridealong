@@ -102,7 +102,17 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
     return items.length ? `${out}\n${items.map((l) => `[william] ${l}`).join('\n')}` : out;
   };
 
-  const server = new McpServer({ name: 'ridealong', version: '0.1.0' });
+  // Claude Code "channels": with `claude --dangerously-load-development-channels
+  // server:ridealong`, notifications/claude/channel land in the conversation
+  // at once, even while Claude is idle. Without the flag they are ignored and
+  // the same lines still arrive at the foot of the next tool result.
+  const server = new McpServer({ name: 'ridealong', version: '0.1.0' }, {
+    capabilities: { experimental: { 'claude/channel': {} } },
+    instructions: 'Ridealong pilote un vrai Chrome que William regarde en direct. Ses messages, pointages, prises de controle et pauses arrivent soit comme <channel source="ridealong"> (immediat), soit en lignes [william] au bas des resultats d\'outils. Lis-les et agis en consequence ; en Manuel, attends qu\'il rende la main.',
+  });
+  liveView?.setEventListener?.((ev) => {
+    void (server.server as any).notification({ method: 'notifications/claude/channel', params: { content: ev.text, meta: { kind: ev.kind } } }).catch(() => { /* client without channels */ });
+  });
   for (const [name, t] of Object.entries(tools)) {
     server.registerTool(name, { description: t.desc, inputSchema: t.shape }, async (args: any) => ({ content: [{ type: 'text', text: await run(name, args) }] }));
   }

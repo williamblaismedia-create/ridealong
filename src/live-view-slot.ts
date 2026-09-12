@@ -19,6 +19,7 @@ export class LiveViewSlot implements LiveViewLike {
   private follower: RemoteLiveView | undefined;
   private tabSelector: ((id: number) => Promise<void>) | undefined;
   private viewportSink: ((v: { width: number; height: number }) => Promise<void>) | undefined;
+  private eventListener: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined;
   private promoting = false;
   private stopped = false;
 
@@ -39,6 +40,7 @@ export class LiveViewSlot implements LiveViewLike {
       if (!/EADDRINUSE/.test((e as Error).message)) throw e;
       if (initial) {
         this.follower = new RemoteLiveView({ secret: this.opts.secret, port: this.opts.port, publicUrl: this.opts.publicUrl, onOwnerGone: () => { void this.promote(log); } });
+        this.follower.setEventListener(this.eventListener);
         await this.follower.ensureStarted();
         this.current = this.follower;
         log('vue live deja servie par une autre session : cette session la suit (mode controle).');
@@ -48,6 +50,7 @@ export class LiveViewSlot implements LiveViewLike {
     owner.setMode(this.current?.getMode?.() ?? 'read');
     owner.setTabSelector(this.tabSelector);
     owner.setViewportSink(this.viewportSink);
+    owner.setEventListener(this.eventListener);
     const old = this.follower; this.follower = undefined;
     for (const line of old?.drainInbox() ?? []) owner.pushInbox(line);
     this.owner = owner; this.current = owner;
@@ -73,6 +76,7 @@ export class LiveViewSlot implements LiveViewLike {
   waitWhilePaused(): Promise<void> { return this.current.waitWhilePaused(); }
   setTabSelector(fn: ((id: number) => Promise<void>) | undefined): void { this.tabSelector = fn; this.owner?.setTabSelector(fn); }
   setViewportSink(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void { this.viewportSink = fn; this.owner?.setViewportSink(fn); }
+  setEventListener(fn: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined): void { this.eventListener = fn; this.owner?.setEventListener(fn); this.follower?.setEventListener(fn); }
   hasViewers(): boolean { return this.current.hasViewers(); }
   pushInbox(line: string): void { this.current.pushInbox(line); }
   peekInbox(): string[] { return this.current.peekInbox(); }

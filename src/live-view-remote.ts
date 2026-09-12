@@ -26,6 +26,8 @@ export class RemoteLiveView implements LiveViewLike {
   private pendingAsks = new Map<number, (v: Verdict) => void>();
   private inbox: string[] = [];
   private inboxWaiters: Array<() => void> = [];
+  private eventListener: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined;
+  setEventListener(fn: ((ev: { kind: 'inbox' | 'mode' | 'pause'; text: string }) => void) | undefined): void { this.eventListener = fn; }
 
   constructor(private opts: { secret: string; port: number; publicUrl?: string; onOwnerGone?: () => void }) {}
 
@@ -45,8 +47,8 @@ export class RemoteLiveView implements LiveViewLike {
       ws.on('open', () => { this.everConnected = true; done(); });
       ws.on('message', (raw) => {
         let m: any; try { m = JSON.parse(raw.toString()); } catch { return; }
-        if (m && typeof m.mode === 'string' && (m.mode === 'read' || m.mode === 'input')) this.mode = m.mode;
-        if (m && typeof m.paused === 'boolean') this.applyPaused(m.paused);
+        if (m && typeof m.mode === 'string' && (m.mode === 'read' || m.mode === 'input')) { const changed = this.mode !== m.mode; this.mode = m.mode; if (changed) { try { this.eventListener?.({ kind: 'mode', text: m.mode === 'input' ? 'William a pris le contrôle (Manuel).' : 'William a rendu le contrôle (Auto).' }); } catch { /* observer */ } } }
+        if (m && typeof m.paused === 'boolean') { const changed = this.paused !== m.paused; this.applyPaused(m.paused); if (changed) { try { this.eventListener?.({ kind: 'pause', text: m.paused ? 'William a mis en pause.' : 'William a repris.' }); } catch { /* observer */ } } }
         if (m && typeof m.william === 'string') this.pushInbox(m.william);
         if (m && m.answer && typeof m.answer.ref === 'number') { this.pendingAsks.get(m.answer.ref)?.(m.answer.verdict); this.pendingAsks.delete(m.answer.ref); }
       });
@@ -89,7 +91,7 @@ export class RemoteLiveView implements LiveViewLike {
   announce(ev: { kind: string; label: string; x?: number; y?: number }): void { this.send({ t: 'announce', ...ev }); }
   isPaused(): boolean { return this.paused; }
   hasViewers(): boolean { return !!(this.ws && this.ws.readyState === WebSocket.OPEN); } // the owner decides; see ask()
-  pushInbox(line: string): void { this.inbox.push(line); if (this.inbox.length > 50) this.inbox.splice(0, this.inbox.length - 50); const w = this.inboxWaiters; this.inboxWaiters = []; for (const r of w) r(); }
+  pushInbox(line: string): void { this.inbox.push(line); if (this.inbox.length > 50) this.inbox.splice(0, this.inbox.length - 50); const w = this.inboxWaiters; this.inboxWaiters = []; for (const r of w) r(); try { this.eventListener?.({ kind: 'inbox', text: line }); } catch { /* observer */ } }
   peekInbox(): string[] { return this.inbox.slice(); }
   drainInbox(): string[] { const out = this.inbox; this.inbox = []; return out; }
   waitInbox(timeoutMs: number): Promise<string[]> {

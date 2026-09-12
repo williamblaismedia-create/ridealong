@@ -72,8 +72,10 @@ No ffmpeg → JPEG frames. Either way it works.
 - **Pause** Claude without taking control.
 - **Approval cards** when Claude calls `ask_approval`.
 - **Point at things** (Auto mode tap → *"William points at: button « Login »"*)
-  and **message Claude** from the page. Both land at the end of his next tool
-  result.
+  and **message Claude** from the page. They reach Claude at the end of his
+  next tool result — or **instantly**, as a Claude Code channel, if you start
+  Claude with `--dangerously-load-development-channels server:ridealong`
+  (also relays "took the wheel" / "paused").
 - **Real tabs**: the strip mirrors Chrome; tap one to move Claude's target.
 - **Resolution picker** (720p → 2K), applied live and remembered.
 - Capture, fullscreen, video/JPEG switch, reconnects by itself, phone-ready.
