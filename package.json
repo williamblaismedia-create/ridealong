@@ -2,11 +2,11 @@
   "name": "ridealong-mcp",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=20"
@@ -45,6 +45,20 @@
     "ridealong"
   ],
   "bin": {
-    "ridealong-local": "scripts/ridealong-local.sh"
-  }
+    "ridealong": "scripts/ridealong-local.sh",
+    "ridealong-relay": "scripts/ridealong-mcp-relay.mjs"
+  },
+  "mcpName": "io.github.williamblaismedia-create/ridealong",
+  "files": [
+    "dist/src/**",
+    "viewer/index.html",
+    "viewer/brand/*.svg",
+    "scripts/ridealong-local.sh",
+    "scripts/ridealong-mcp-relay.mjs",
+    "scripts/ridealong-statusline.sh",
+    "scripts/docker-entrypoint.sh",
+    "README.md",
+    "README.fr.md",
+    "LICENSE"
+  ]
 }
