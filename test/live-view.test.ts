@@ -290,6 +290,28 @@ describe('LiveView (integration)', () => {
     }
   });
 
+  // The page scrubs the token from the URL on load (n4). A plain reload —
+  // the first thing anyone does when a view looks stuck — must NOT turn a
+  // valid link into "lien expire": the token is kept per tab (sessionStorage)
+  // so the reload reconnects. It is still never sent to the server in a URL
+  // path/query and never lands in history.
+  it('viewer page survives a reload without the token in the URL', async () => {
+    const lv = new LiveView(driver, { secret });
+    const { url } = await lv.start(PORT + 3);
+    const viewer = await driver.context().newPage();
+    try {
+      await viewer.goto(url(300));
+      await viewer.waitForSelector('#dot.on', { timeout: 5000 });
+      expect(viewer.url()).not.toContain('token='); // scrubbed
+      await viewer.reload();
+      await viewer.waitForSelector('#dot.on', { timeout: 5000 });
+      expect(await viewer.textContent('#hint')).not.toContain('expire');
+    } finally {
+      await viewer.close().catch(() => {});
+      await lv.stop();
+    }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {

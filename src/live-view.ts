@@ -444,8 +444,17 @@ const VIEWER_HTML = `<!doctype html>
 <script>
 (function () {
   // Token from the fragment only (never the query string), then scrub it from
-  // history immediately (n4). Never logged.
+  // history immediately (n4). Never logged. It is ALSO kept in this tab's
+  // sessionStorage: a plain reload (the reflex when a view looks stuck) would
+  // otherwise come back with no token and lock a valid link out as
+  // "lien expire". sessionStorage is per tab, dies with the tab, never
+  // reaches history or any server log.
+  var KEY = 'scry.token';
   var token = new URLSearchParams((location.hash || '').replace(/^#/, '')).get('token') || '';
+  try {
+    if (token) sessionStorage.setItem(KEY, token);
+    else token = sessionStorage.getItem(KEY) || '';
+  } catch (e) {}
   try { history.replaceState(null, document.title, location.pathname + location.search); } catch (e) {}
 
   var img = document.getElementById('screen');
@@ -486,7 +495,7 @@ const VIEWER_HTML = `<!doctype html>
     s.onerror = function () { /* no payload logged */ };
     s.onclose = function (ev) {
       dot.classList.remove('on');
-      if (ev && ev.code === 1008) { gaveUp = true; hint.textContent = 'lien expire — demande un nouveau lien'; return; }
+      if (ev && ev.code === 1008) { gaveUp = true; try { sessionStorage.removeItem(KEY); } catch (e) {} hint.textContent = 'lien expire — demande un nouveau lien'; return; }
       hint.textContent = 'reconnexion…';
       retryTimer = setTimeout(connect, retryMs);
       retryMs = Math.min(10000, retryMs * 2);
