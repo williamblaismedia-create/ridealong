@@ -89,7 +89,19 @@
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--cream); font: 500 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body { margin: 0; background: var(--bg); color: var(--cream); font: 500 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; position: relative; }
+  /* Grain : la texture papier/pellicule du systeme W, a 4 %. */
+  body::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .045; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  /* Fond long : deux lueurs terracotta tres sourdes qui suivent la page, et une trame fine. */
+  body::after { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(38% 22% at 88% 34%, rgba(218,119,86,.09), rgba(218,119,86,0) 70%),
+      radial-gradient(42% 20% at 8% 62%, rgba(218,119,86,.07), rgba(218,119,86,0) 70%),
+      radial-gradient(40% 18% at 60% 88%, rgba(218,119,86,.06), rgba(218,119,86,0) 70%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 96px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 1px, transparent 1px 96px); }
+  nav, header, main, footer { position: relative; z-index: 1; }
   a { color: inherit; text-decoration: none; }
   img { max-width: 100%; display: block; }
   .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
@@ -112,15 +124,36 @@
   .gh svg { width: 16px; height: 16px; fill: var(--cream); }
   .gh b { font-weight: 600; color: var(--cream); }
 
-  /* Hero — the orb sends waves; the product is the image */
-  .hero { position: relative; padding: 96px 0 40px; overflow: hidden; }
-  .waves { position: absolute; left: 50%; top: -420px; width: 1600px; height: 1600px; transform: translateX(-50%); pointer-events: none; }
-  .waves circle { fill: none; stroke: var(--terra); stroke-width: 1; opacity: 0; transform-origin: 50% 50%; animation: wave 9s var(--ease) infinite; }
-  .waves circle:nth-child(2) { animation-delay: 1.5s; } .waves circle:nth-child(3) { animation-delay: 3s; } .waves circle:nth-child(4) { animation-delay: 4.5s; } .waves circle:nth-child(5) { animation-delay: 6s; } .waves circle:nth-child(6) { animation-delay: 7.5s; }
-  @keyframes wave { 0% { transform: scale(.08); opacity: 0; } 8% { opacity: .55; } 100% { transform: scale(1); opacity: 0; } }
-  .glow { position: absolute; left: 50%; top: -160px; width: 1100px; height: 700px; transform: translateX(-50%); background: radial-gradient(48% 55% at 50% 40%, rgba(218,119,86,.20), rgba(218,119,86,0) 70%); pointer-events: none; }
-  @media (prefers-reduced-motion: reduce) { .waves circle { animation: none; opacity: .18; transform: scale(.4); } .waves circle:nth-child(3) { transform: scale(.7); } .waves circle:nth-child(5) { transform: scale(1); } }
-  .hero .wrap { position: relative; }
+  /* Hero — a lit horizon, a field of signal waves, arcs the demo rises from. */
+  .hero { position: relative; padding: 96px 0 40px; overflow: hidden; isolation: isolate; }
+  .bg { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .horizon { position: absolute; left: 50%; bottom: -120px; width: 1900px; height: 900px; transform: translateX(-50%);
+    background: radial-gradient(50% 45% at 50% 100%, rgba(218,119,86,.42) 0%, rgba(218,119,86,.14) 38%, rgba(218,119,86,0) 72%); filter: blur(10px); }
+  .dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(250,248,245,.18) 1px, transparent 1.2px); background-size: 26px 26px;
+    -webkit-mask-image: radial-gradient(60% 70% at 50% 45%, #000 20%, transparent 100%); mask-image: radial-gradient(60% 70% at 50% 45%, #000 20%, transparent 100%); opacity: .7; }
+  .field { position: absolute; left: 50%; top: 380px; width: max(1600px, 100%); height: 700px; transform: translateX(-50%); opacity: 1; }
+  /* Le systeme d'anneaux : l'orbe qui resonne, a droite du titre. */
+  .bloom { position: absolute; right: -120px; top: 40px; width: 900px; height: 900px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(218,119,86,.30), rgba(218,119,86,.10) 45%, rgba(218,119,86,0) 72%); filter: blur(30px); }
+  .ripple { position: absolute; right: -260px; top: -110px; width: 1200px; height: 1200px; }
+  .ripple .pulse { transform-origin: 600px 600px; animation: pulsering 7s var(--ease) infinite; opacity: 0; }
+  .ripple .p2 { animation-delay: 3.5s; }
+  @keyframes pulsering { 0% { transform: scale(.15); opacity: .0; } 10% { opacity: .8; } 100% { transform: scale(1); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .ripple .pulse { animation: none; } }
+  @media (max-width: 1100px) { .ripple { right: -520px; top: -60px; opacity: .6; } .bloom { right: -400px; } }
+  @media (max-width: 860px) { .ripple, .bloom { display: none; } }
+  .field .w { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+  .field .w1 { stroke: url(#lg1); } .field .w2 { stroke: url(#lg2); } .field .w3 { stroke: url(#lg1); opacity: .5; } .field .w4 { stroke: url(#lg2); opacity: .6; }
+  .field .w1, .field .w3 { stroke-dasharray: 3 9; animation: flow 26s linear infinite; }
+  .field .w3 { animation-duration: 38s; animation-direction: reverse; }
+  @keyframes flow { to { stroke-dashoffset: -600; } }
+  .arcs { position: absolute; left: 50%; bottom: -40px; width: 1400px; height: 700px; transform: translateX(-50%); }
+  @media (prefers-reduced-motion: reduce) { .field .w1, .field .w3 { animation: none; } .signal { display: none; } }
+  .mark { width: 64px; height: 64px; margin-bottom: 26px; }
+  .mark .pupil { animation: pulse 2.6s ease-in-out infinite; transform-origin: 48px 48px; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+  @media (prefers-reduced-motion: reduce) { .mark .pupil { animation: none; } }
+  .hero .wrap { position: relative; z-index: 1; }
   .mark { width: 64px; height: 64px; margin-bottom: 26px; }
   .mark .pupil { animation: pulse 2.6s ease-in-out infinite; transform-origin: 48px 48px; }
   @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -135,15 +168,30 @@
   .btn { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--cream); font-weight: 600; font-size: 15px; }
   .btn:hover { background: rgba(255,255,255,.05); }
   .meta { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 18px; font: 500 12px var(--mono); color: var(--faint); }
-  .demo { margin: 64px auto 0; width: min(1120px, calc(100% - 40px)); border-radius: 22px; border: 1px solid var(--line); background: var(--ink); padding: 8px; box-shadow: 0 60px 140px rgba(0,0,0,.65), 0 0 0 1px rgba(218,119,86,.12); }
+  .demo { margin: 64px auto 0; width: min(1120px, calc(100% - 40px)); border-radius: 22px; border: 1px solid var(--line); background: var(--ink); padding: 8px; box-shadow: 0 60px 140px rgba(0,0,0,.7), 0 0 0 1px rgba(218,119,86,.14), 0 -60px 160px rgba(218,119,86,.10); position: relative; z-index: 1; }
   .demo img { border-radius: 16px; }
 
-  /* Sections */
-  section { padding: 110px 0 0; }
+  /* Sections : separees par une onde, pas par une regle. */
+  section { padding: 110px 0 0; position: relative; }
+  .ondes { display: block; width: 100%; height: 120px; margin: 90px 0 -60px; opacity: .9; }
+  .ondes path { fill: none; stroke-width: 1.2; stroke-linecap: round; }
+  .ondes .a { stroke: rgba(218,119,86,.42); stroke-dasharray: 6 14; animation: drift 14s linear infinite; }
+  .ondes .b { stroke: rgba(250,248,245,.10); }
+  .ondes .c { stroke: rgba(218,119,86,.16); }
+  @keyframes drift { to { stroke-dashoffset: -400; } }
+  @media (prefers-reduced-motion: reduce) { .ondes .a { animation: none; } }
+  /* Anneaux discrets derriere certains titres : l'orbe qui resonne. */
+  .rings { position: absolute; right: -180px; top: 40px; width: 620px; height: 620px; pointer-events: none; opacity: .55; }
+  .rings circle { fill: none; stroke: var(--terra); stroke-opacity: .16; stroke-width: 1; }
+  .rings circle:nth-child(2) { stroke-opacity: .10; } .rings circle:nth-child(3) { stroke-opacity: .06; } .rings circle:nth-child(4) { stroke: var(--cream); stroke-opacity: .05; }
+  .rings.left { right: auto; left: -240px; top: -60px; }
   .kicker { color: var(--terra-2); font: 500 13px var(--mono); margin-bottom: 18px; }
-  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
-  .move { padding: 26px; border-radius: var(--r); background: var(--ink); border: 1px solid var(--line-2); min-height: 250px; display: flex; flex-direction: column; gap: 12px; }
-  .move .ui { margin-top: auto; font: 500 12px var(--mono); color: var(--cream-2); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; line-height: 1.5; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 44px; border-top: 1px solid var(--line); }
+  .move { padding: 30px 28px 28px 0; margin-right: 28px; border-right: 1px solid var(--line-2); min-height: 250px; display: flex; flex-direction: column; gap: 12px; }
+  .move:last-child { border-right: 0; margin-right: 0; }
+  .move h3 { display: flex; align-items: center; gap: 12px; }
+  .move h3::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--terra); box-shadow: 0 0 0 4px rgba(218,119,86,.18); }
+  .move .ui { margin-top: auto; font: 500 12px var(--mono); color: var(--cream-2); background: rgba(26,23,20,.7); border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; line-height: 1.5; }
   .move .ui b { color: var(--terra-2); font-weight: 500; }
   .move p { color: var(--muted); font-size: 15px; }
   .shot { margin-top: 44px; border-radius: 20px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 40px 100px rgba(0,0,0,.55); }
@@ -162,8 +210,9 @@
   td .y { color: var(--terra-2); } td .n { color: var(--faint); }
   .ridecol { background: rgba(218,119,86,.06); }
 
-  .trust { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
-  .trust div { padding: 24px; border-radius: var(--r); border: 1px solid var(--line-2); }
+  .trust { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 44px; border-top: 1px solid var(--line); }
+  .trust > div { padding: 28px 28px 28px 0; margin-right: 28px; border-right: 1px solid var(--line-2); }
+  .trust > div:last-child { border-right: 0; margin-right: 0; }
   .trust p { color: var(--muted); font-size: 15px; margin-top: 8px; }
 
   .tabs { margin-top: 40px; display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
@@ -191,6 +240,10 @@
 
   @media (max-width: 860px) {
     .grid3, .trust { grid-template-columns: 1fr; }
+    .move, .trust > div { margin-right: 0; padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line-2); }
+    .move:last-child, .trust > div:last-child { border-bottom: 0; }
+    .rings { display: none; }
+    .ondes { height: 70px; margin: 50px 0 -30px; }
     .two { grid-template-columns: 1fr; }
     .tabs { grid-template-columns: 1fr; } .tabs [role=tablist] { flex-direction: row; overflow-x: auto; }
     nav .links a:not(.gh) { display: none; }
@@ -223,13 +276,55 @@
 </nav>
 
 <header class="hero" id="top">
-  <div class="glow" aria-hidden="true"></div>
-  <svg class="waves" viewBox="0 0 1600 1600" aria-hidden="true">
-    <circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/><circle cx="800" cy="800" r="760"/>
-  </svg>
+  <div class="bg" aria-hidden="true">
+    <div class="horizon"></div>
+    <div class="dots"></div>
+    <svg class="field" viewBox="0 0 1600 700" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="lg1" x1="0" x2="1"><stop offset="0" stop-color="#DA7756" stop-opacity="0"/><stop offset=".35" stop-color="#DA7756" stop-opacity=".9"/><stop offset=".65" stop-color="#E6A485" stop-opacity=".9"/><stop offset="1" stop-color="#DA7756" stop-opacity="0"/></linearGradient>
+        <linearGradient id="lg2" x1="0" x2="1"><stop offset="0" stop-color="#FAF8F5" stop-opacity="0"/><stop offset=".5" stop-color="#FAF8F5" stop-opacity=".28"/><stop offset="1" stop-color="#FAF8F5" stop-opacity="0"/></linearGradient>
+        <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter>
+      </defs>
+      <path class="w w1" d="M0 380 C 200 300, 400 300, 600 380 S 1000 460, 1200 380 S 1500 300, 1600 340"/>
+      <path class="w w2" d="M0 420 C 220 350, 420 350, 640 420 S 1040 490, 1240 420 S 1520 350, 1600 380"/>
+      <path class="w w3" d="M0 455 C 240 395, 440 395, 680 455 S 1080 515, 1280 455 S 1540 400, 1600 420"/>
+      <path class="w w4" d="M0 340 C 180 260, 380 260, 560 340 S 960 420, 1160 340 S 1480 260, 1600 300"/>
+      <path id="track" d="M0 380 C 200 300, 400 300, 600 380 S 1000 460, 1200 380 S 1500 300, 1600 340" fill="none" stroke="none"/>
+      <g class="signal">
+        <circle r="14" fill="#DA7756" opacity=".35" filter="url(#soft)"><animateMotion dur="11s" repeatCount="indefinite" rotate="auto"><mpath href="#track"/></animateMotion></circle>
+        <circle r="3.5" fill="#FAF8F5"><animateMotion dur="11s" repeatCount="indefinite"><mpath href="#track"/></animateMotion></circle>
+      </g>
+    </svg>
+    <div class="bloom"></div>
+    <svg class="ripple" viewBox="0 0 1200 1200">
+      <defs>
+        <radialGradient id="rg" cx="50%" cy="50%" r="50%"><stop offset=".55" stop-color="#DA7756" stop-opacity=".0"/><stop offset="1" stop-color="#DA7756" stop-opacity=".35"/></radialGradient>
+        <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E6A485" stop-opacity=".9"/><stop offset=".5" stop-color="#DA7756" stop-opacity=".35"/><stop offset="1" stop-color="#DA7756" stop-opacity=".05"/></linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#ring)">
+        <circle cx="600" cy="600" r="90" stroke-width="2"/>
+        <circle cx="600" cy="600" r="170" stroke-width="1.6" opacity=".85"/>
+        <circle cx="600" cy="600" r="260" stroke-width="1.3" opacity=".7"/>
+        <circle cx="600" cy="600" r="360" stroke-width="1.1" opacity=".55"/>
+        <circle cx="600" cy="600" r="470" stroke-width="1" opacity=".4"/>
+        <circle cx="600" cy="600" r="590" stroke-width="1" opacity=".25"/>
+      </g>
+      <circle class="pulse" cx="600" cy="600" r="590" fill="none" stroke="#E6A485" stroke-width="1.5"/>
+      <circle class="pulse p2" cx="600" cy="600" r="590" fill="none" stroke="#E6A485" stroke-width="1.5"/>
+      <circle cx="600" cy="600" r="16" fill="#DA7756"/>
+      <circle cx="600" cy="600" r="30" fill="none" stroke="#FAF8F5" stroke-opacity=".7" stroke-width="2"/>
+    </svg>
+    <svg class="arcs" viewBox="0 0 1400 700">
+      <defs>
+        <linearGradient id="arc" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#DA7756" stop-opacity=".0"/><stop offset=".55" stop-color="#DA7756" stop-opacity=".38"/><stop offset="1" stop-color="#E6A485" stop-opacity=".0"/></linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#arc)" stroke-width="1.2">
+        <circle cx="700" cy="720" r="300"/><circle cx="700" cy="720" r="420"/><circle cx="700" cy="720" r="540"/><circle cx="700" cy="720" r="660"/><circle cx="700" cy="720" r="780"/>
+      </g>
+    </svg>
+  </div>
   <div class="wrap">
-    <svg class="mark" viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="29" fill="none" stroke="#FAF8F5" stroke-width="6"/><path d="M31.6 36.8a21 21 0 0 1 13.4-9.3" fill="none" stroke="#FAF8F5" stroke-width="4.4" stroke-linecap="round" opacity=".45"/><circle class="pupil" cx="48" cy="48" r="10" fill="#DA7756"/></svg>
-    <h1>A browser your AI drives. <em>Ride along,</em> grab the wheel anytime.</h1>
+    <h1 style="margin-top:24px">A browser your AI drives. <em>Ride along,</em> grab the wheel anytime.</h1>
     <p class="lead">Ridealong is an open-source MCP server for Claude Code. Claude drives a real Google Chrome; you open one link and watch it live, point at things, pause, approve the risky steps, or take the wheel from your phone. Then hand it back.</p>
     <div class="cta">
       <div class="install"><code id="cmd">claude mcp add ridealong -- ./scripts/ridealong-local.sh</code><button type="button" id="copy" aria-label="Copy install command">Copy</button></div>
@@ -243,9 +338,14 @@
 </header>
 
 <main>
+  <svg class="ondes" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+  <path class="b" d="M0 70 C 120 30, 240 30, 360 70 S 600 110, 720 70 S 960 30, 1080 70 S 1320 110, 1440 70"/>
+  <path class="c" d="M0 78 C 120 44, 240 44, 360 78 S 600 112, 720 78 S 960 44, 1080 78 S 1320 112, 1440 78"/>
+  <path class="a" d="M0 60 C 120 20, 240 20, 360 60 S 600 100, 720 60 S 960 20, 1080 60 S 1320 100, 1440 60"/>
+</svg>
   <section id="moves">
     <div class="wrap">
-      <p class="kicker">what you get</p>
+      <p class="kicker">What you get</p>
       <h2>Three moves that no other browser MCP gives you.</h2>
       <div class="grid3">
         <article class="move">
@@ -271,9 +371,14 @@
     </div>
   </section>
 
+  <svg class="ondes" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+  <path class="b" d="M0 70 C 120 30, 240 30, 360 70 S 600 110, 720 70 S 960 30, 1080 70 S 1320 110, 1440 70"/>
+  <path class="c" d="M0 78 C 120 44, 240 44, 360 78 S 600 112, 720 78 S 960 44, 1080 78 S 1320 112, 1440 78"/>
+  <path class="a" d="M0 60 C 120 20, 240 20, 360 60 S 600 100, 720 60 S 960 20, 1080 60 S 1320 100, 1440 60"/>
+</svg>
   <section id="claude">
     <div class="wrap">
-      <p class="kicker">in Claude Code</p>
+      <p class="kicker">In Claude Code</p>
       <div class="two">
         <div>
           <h2>Every tool call is visible. Every risky one waits for you.</h2>
@@ -290,9 +395,15 @@
     </div>
   </section>
 
+  <svg class="ondes" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+  <path class="b" d="M0 70 C 120 30, 240 30, 360 70 S 600 110, 720 70 S 960 30, 1080 70 S 1320 110, 1440 70"/>
+  <path class="c" d="M0 78 C 120 44, 240 44, 360 78 S 600 112, 720 78 S 960 44, 1080 78 S 1320 112, 1440 78"/>
+  <path class="a" d="M0 60 C 120 20, 240 20, 360 60 S 600 100, 720 60 S 960 20, 1080 60 S 1320 100, 1440 60"/>
+</svg>
   <section id="compare">
+    <svg class="rings" viewBox="0 0 620 620" aria-hidden="true"><circle cx="310" cy="310" r="120"/><circle cx="310" cy="310" r="200"/><circle cx="310" cy="310" r="280"/><circle cx="310" cy="310" r="308"/></svg>
     <div class="wrap">
-      <p class="kicker">compare</p>
+      <p class="kicker">Compared</p>
       <h2>Not another Playwright wrapper.</h2>
       <p class="lead" style="margin-top:18px">Playwright MCP and Chrome DevTools MCP let an agent act in a browser. Claude in Chrome puts the agent inside your own tabs. Ridealong keeps the agent on its own real Chrome and puts <strong>you</strong> in the passenger seat, with the door handle.</p>
       <table>
@@ -312,9 +423,14 @@
     </div>
   </section>
 
+  <svg class="ondes" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+  <path class="b" d="M0 70 C 120 30, 240 30, 360 70 S 600 110, 720 70 S 960 30, 1080 70 S 1320 110, 1440 70"/>
+  <path class="c" d="M0 78 C 120 44, 240 44, 360 78 S 600 112, 720 78 S 960 44, 1080 78 S 1320 112, 1440 78"/>
+  <path class="a" d="M0 60 C 120 20, 240 20, 360 60 S 600 100, 720 60 S 960 20, 1080 60 S 1320 100, 1440 60"/>
+</svg>
   <section id="trust">
     <div class="wrap">
-      <p class="kicker">trust</p>
+      <p class="kicker">Trust</p>
       <h2>Built for the moment the agent hits a login page.</h2>
       <div class="trust">
         <div><h3>No capture</h3><p>Manual-mode input is relayed to Chrome and never retained. Perception tools refuse to run while you hold the wheel. Password fields never expose values in snapshots. Tests enforce it.</p></div>
@@ -325,9 +441,15 @@
     </div>
   </section>
 
+  <svg class="ondes" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+  <path class="b" d="M0 70 C 120 30, 240 30, 360 70 S 600 110, 720 70 S 960 30, 1080 70 S 1320 110, 1440 70"/>
+  <path class="c" d="M0 78 C 120 44, 240 44, 360 78 S 600 112, 720 78 S 960 44, 1080 78 S 1320 112, 1440 78"/>
+  <path class="a" d="M0 60 C 120 20, 240 20, 360 60 S 600 100, 720 60 S 960 20, 1080 60 S 1320 100, 1440 60"/>
+</svg>
   <section id="install">
+    <svg class="rings left" viewBox="0 0 620 620" aria-hidden="true"><circle cx="310" cy="310" r="120"/><circle cx="310" cy="310" r="200"/><circle cx="310" cy="310" r="280"/><circle cx="310" cy="310" r="308"/></svg>
     <div class="wrap">
-      <p class="kicker">get started</p>
+      <p class="kicker">Get started</p>
       <h2>Three ways to run it. All of them in under five minutes.</h2>
       <div class="tabs">
         <div role="tablist" aria-label="Install options">
@@ -356,9 +478,14 @@ claude mcp add ridealong -- node ~/ridealong/scripts/ridealong-mcp-relay.mjs</pr
     </div>
   </section>
 
+  <svg class="ondes" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+  <path class="b" d="M0 70 C 120 30, 240 30, 360 70 S 600 110, 720 70 S 960 30, 1080 70 S 1320 110, 1440 70"/>
+  <path class="c" d="M0 78 C 120 44, 240 44, 360 78 S 600 112, 720 78 S 960 44, 1080 78 S 1320 112, 1440 78"/>
+  <path class="a" d="M0 60 C 120 20, 240 20, 360 60 S 600 100, 720 60 S 960 20, 1080 60 S 1320 100, 1440 60"/>
+</svg>
   <section id="faq">
     <div class="wrap">
-      <p class="kicker">questions</p>
+      <p class="kicker">Questions</p>
       <h2>Straight answers.</h2>
       <div class="faq">
         <details><summary>What is Ridealong?</summary><p>An open-source MCP server for Claude Code. It drives a real Google Chrome over the Chrome DevTools Protocol and streams it live to a page you can watch, point at, pause, approve, or take over from your phone.</p></details>
