@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="viewer/brand/ridealong-mark.svg" width="88" alt="Ridealong">
-</p>
-
-<h1 align="center"><em>RIDEALONG</em></h1>
+<table align="center" border="0"><tr>
+  <td><img src="viewer/brand/ridealong-mark.svg" width="72" alt="Ridealong"></td>
+  <td><h1><em>RIDEALONG</em></h1></td>
+</tr></table>
 
 <p align="center">
   <strong>A browser your AI drives. Ride along, grab the wheel anytime.</strong><br>

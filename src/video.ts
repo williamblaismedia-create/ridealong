@@ -39,22 +39,24 @@ export const VIDEO_MIME = 'video/mp4; codecs="avc1.42E01E"'; // Constrained Base
 /** Preferred H.264 encoders, best first: NVIDIA GPU, Apple GPU, software. */
 export const ENCODER_PREFERENCE = ['h264_nvenc', 'h264_videotoolbox', 'libx264'] as const;
 
-let detected: Promise<string | undefined> | undefined;
+const detected = new Map<string, Promise<string | undefined>>();
 /**
- * Pick the best H.264 encoder this ffmpeg has (cached). Undefined when ffmpeg
- * is missing or has none: the live view then serves JPEG only.
+ * Pick the best H.264 encoder this ffmpeg has (cached per binary). Undefined
+ * when ffmpeg is missing or has none: the live view then serves JPEG only.
  */
 export function detectEncoder(ffmpeg = 'ffmpeg'): Promise<string | undefined> {
-  if (!detected) {
-    detected = new Promise((resolve) => {
+  let p = detected.get(ffmpeg);
+  if (!p) {
+    p = new Promise((resolve) => {
       execFile(ffmpeg, ['-hide_banner', '-encoders'], { timeout: 10_000 }, (err, stdout) => {
         if (err) return resolve(undefined);
         const have = String(stdout);
         resolve(ENCODER_PREFERENCE.find((e) => new RegExp(`\\s${e}\\s`).test(have)));
       });
     });
+    detected.set(ffmpeg, p);
   }
-  return detected;
+  return p;
 }
 
 /** Default target bitrate scaled to the frame: ~5 Mb/s at 1440x900, ~8 Mb/s at 1920x1080 (UI text needs it; VBR spends less on static pages). */
@@ -177,7 +179,7 @@ export class VideoStream extends EventEmitter {
       this.proc = undefined;
       this.emit('exit', { code, signal, stderr });
     });
-    proc.on('error', (e) => { if (this.proc === proc) this.emit('error', e); });
+    proc.on('error', (e) => { if (this.proc === proc && this.listenerCount('error')) this.emit('error', e); });
 
     // Feed: one screencast on the primary tab at the encoder's size.
     const cdp = await this.driver.cdpSession();
