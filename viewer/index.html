@@ -407,7 +407,7 @@
   var MS = window.ManagedMediaSource || window.MediaSource;
   var canVideo = !!(MS && MS.isTypeSupported && MS.isTypeSupported(MIME));
   var wantVideo = canVideo && (function () { try { return sessionStorage.getItem('scry.video') !== 'off'; } catch (e) { return true; } })();
-  var mediaSource = null, sb = null, appendQueue = [], videoUp = false, videoFailed = false;
+  var mediaSource = null, sb = null, appendQueue = [], videoUp = false, videoFailed = false, videoWatch = 0;
   function setVideoUI(on) { document.body.classList.toggle('video', on); vbtn.classList.toggle('on', on); }
   vbtn.disabled = !canVideo;
   if (!canVideo) vbtn.title = 'Vidéo non supportée par ce navigateur';
@@ -427,7 +427,19 @@
     s.binaryType = 'arraybuffer';
     ws = s;
     resetVideo();
-    s.onopen = function () { retryMs = 1000; dot.classList.add('on'); document.body.classList.remove('off'); setEnabled(true); setMode(mode); };
+    s.onopen = function () {
+      retryMs = 1000; dot.classList.add('on'); document.body.classList.remove('off'); setEnabled(true); setMode(mode);
+      // Garde-fou : si la video ne montre rien dans les 4 s (pas d'init, ou
+      // rien de decode), on retombe sur les images JPEG plutot que du noir.
+      if (useVideo) {
+        clearTimeout(videoWatch);
+        videoWatch = setTimeout(function () {
+          if (ws !== s || s.readyState !== WebSocket.OPEN) return;
+          var decoded = tv.readyState >= 2 && tv.videoWidth > 0;
+          if (!decoded) { videoFailed = true; hint.textContent = 'vidéo muette — images JPEG'; addEntry('pause', 'vidéo indisponible, bascule en JPEG'); try { s.close(); } catch (e) {} retryMs = 300; }
+        }, 4000);
+      }
+    };
     s.onerror = function () { /* no payload logged */ };
     s.onclose = function (ev) {
       dot.classList.remove('on');

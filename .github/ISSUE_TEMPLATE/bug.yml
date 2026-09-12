@@ -1,0 +1,15 @@
+name: Bug
+description: Something broke
+labels: [bug]
+body:
+  - type: dropdown
+    id: mode
+    attributes: { label: How do you run Scry?, options: [Local (scry-local.sh), Docker, Server + relay, Other] }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: Steps, what you expected, what you saw. Paste `console_errors` output if relevant. }
+    validations: { required: true }
+  - type: textarea
+    id: env
+    attributes: { label: Environment, description: OS, node version, Chrome version, ffmpeg yes/no, viewer browser (Mac Chrome, iPhone Safari…). }

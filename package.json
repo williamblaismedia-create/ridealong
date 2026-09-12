@@ -1,5 +1,5 @@
 {
-  "name": "scry",
+  "name": "scry-mcp",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -22,5 +22,28 @@
     "@types/ws": "^8.18.1",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
+  },
+  "description": "A browser your AI drives — that you can watch live and take over. MCP server for Claude Code with a real Chrome and a live H.264 view.",
+  "license": "MIT",
+  "author": "William Blais <williamblaismedia@gmail.com> (https://wautomatisations.com)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wautomatisations/scry.git"
+  },
+  "homepage": "https://github.com/wautomatisations/scry#readme",
+  "keywords": [
+    "mcp",
+    "claude",
+    "claude-code",
+    "browser",
+    "automation",
+    "playwright",
+    "cdp",
+    "live-view",
+    "human-in-the-loop",
+    "agent"
+  ],
+  "bin": {
+    "scry-local": "scripts/scry-local.sh"
   }
 }

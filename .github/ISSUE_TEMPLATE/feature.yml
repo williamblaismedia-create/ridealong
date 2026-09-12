@@ -1,0 +1,8 @@
+name: Feature
+description: Something Scry should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes: { label: The idea, description: What would you do with it? One concrete scenario beats a list. }
+    validations: { required: true }
