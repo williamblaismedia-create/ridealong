@@ -43,15 +43,13 @@
   /* Le mot-symbole : SCRY, capitales italiques serrees, creme sur noir chaud. */
   #wordmark { font: italic 800 20px/1 var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--warm-25); text-align: center; padding: 0 12px; user-select: none; -webkit-user-select: none; }
-  #wordmark small { display: block; font: 500 9px/1.6 var(--font-mono); font-style: normal; letter-spacing: 0.24em; color: var(--warm-400); }
-  /* Le point : blanc, il respire tant que le lien vit, et bat a chaque image
-     recue. Eteint et immobile hors ligne. */
-  #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warm-700); flex: 0 0 auto; opacity: 0.6;
-    transition: background var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast) var(--ease-out); }
-  #dot.on { background: var(--warm-25); opacity: 1; animation: breathe 2.6s ease-in-out infinite; }
-  #dot.on.blip { transform: scale(1.7); box-shadow: 0 0 0 5px rgba(250, 248, 245, 0.18), 0 0 14px rgba(250, 248, 245, 0.7); animation: none; }
-  @keyframes breathe { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { #dot.on { animation: none; } #dot.on.blip { transform: none; } }
+  /* Le point : discret. Blanc et fixe tant que le lien vit, un leger
+     battement par image recue, gris hors ligne. */
+  #dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warm-700); flex: 0 0 auto; opacity: 0.7;
+    transition: background var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+  #dot.on { background: var(--warm-25); opacity: 0.85; }
+  #dot.on.blip { opacity: 1; transform: scale(1.25); }
+  @media (prefers-reduced-motion: reduce) { #dot.on.blip { transform: none; } }
   #hint { color: var(--warm-400); font-size: 13px; text-align: right; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -88,7 +86,6 @@
     #hint { display: none; }
     #bar { gap: 8px; padding: 8px 12px; }
     #wordmark { font-size: 17px; padding: 0 6px; }
-    #wordmark small { display: none; }
     #mode { min-height: 36px; }
     #mode button { min-width: 64px; padding: 0 10px; font-size: 12px; }
     #stage { padding: 8px; }
@@ -100,7 +97,7 @@
     <div id="left">
       <span id="dot"></span>
     </div>
-    <div id="wordmark">Scry<small>w automatisations</small></div>
+    <div id="wordmark">Scry</div>
     <div id="right">
       <span id="hint"></span>
       <div id="mode" class="read off" role="radiogroup" aria-label="mode">
