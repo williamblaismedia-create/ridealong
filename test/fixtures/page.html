@@ -6,11 +6,17 @@
   <input id="name" aria-label="Your name" />
   <p id="status">idle</p>
   <ul id="list"><li>alpha</li><li>beta</li></ul>
+  <button id="err">Err</button>
   <script>
     document.getElementById('go').addEventListener('click', () => {
       document.getElementById('status').textContent = 'done';
       const li = document.createElement('li'); li.textContent = 'gamma';
       document.getElementById('list').appendChild(li);
+    });
+    document.getElementById('err').addEventListener('click', () => {
+      console.error('boom-console');
+      fetch('/missing-' + Date.now()).catch(() => {});
+      setTimeout(() => { throw new Error('boom-page'); }, 0);
     });
   </script>
 </body></html>

@@ -11,6 +11,7 @@ export async function startBrowser(): Promise<{ cdpUrl: string; pageUrl: string;
   const html = readFileSync(join(here, 'fixtures', 'page.html'), 'utf8');
   let counter = 0;
   const server: Server = createServer((req, res) => {
+    if (req.url?.startsWith('/missing')) { res.statusCode = 404; res.end('nope'); return; }
     if (req.url?.startsWith('/counter')) {
       // Aggressively cacheable: without "disable cache" Chrome would keep
       // showing the first value on later navigations.

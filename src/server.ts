@@ -13,6 +13,7 @@ import { Network } from './network.js';
 import { Tabs, type TabInfo } from './tabs.js';
 import { type LiveViewLike } from './live-view.js';
 import { LiveViewSlot } from './live-view-slot.js';
+import { PageLog } from './console.js';
 
 function headerLine(s: StateHeader): string {
   return `[state] url=${s.url} title=${JSON.stringify(s.title)} ready=${s.ready} dialog=${s.dialogOpen}`;
@@ -31,8 +32,8 @@ interface Tool { desc: string; shape: Record<string, z.ZodTypeAny>; run: (args: 
 const PRIMARY_TAB_NOTE =
   'Perception, action et la vue live suivent l\'onglet CIBLE ; tabs_select/tabs_open deplacent cette cible (refaire un snapshot apres un changement, les [ref] de l\'autre onglet ne valent plus). William peut aussi changer d\'onglet depuis la vue live.';
 
-export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveViewLike }) {
-  const { perception, action, network, liveView } = deps;
+export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveViewLike; pageLog?: PageLog }) {
+  const { perception, action, network, liveView, pageLog } = deps;
   const tabs = new Tabs(perception.driver);
   liveView?.setTabSelector?.((id) => tabs.select(id)); // a chip tap on the viewer moves the target
 
@@ -64,6 +65,8 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
     act: { desc: 'Agir sur un element de l\'onglet cible par [ref] : click, hover, type (remplir), ou press (touche). Renvoie l\'entete [state] resultant.', shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await gate(); await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
     fill: { desc: 'Remplir plusieurs champs de l\'onglet cible par [ref] en un appel. Renvoie l\'entete [state] resultant.', shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await gate(); await action.fill(a.fields); return headerLine(await perception.state()); } },
     scroll: { desc: 'Faire defiler l\'onglet cible vers le haut ou le bas, d\'un nombre de pixels optionnel.', shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await gate(); await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
+    diff: { desc: 'Ce qui a change sur l\'onglet cible depuis le dernier snapshot/find/diff : elements apparus et disparus (role + nom), avec leurs [ref] a jour. Bien moins long qu\'un snapshot complet apres une action. Suspendu tant que la vue live est en mode input.', shape: {}, run: async () => { refuseInputMode(); const d = await perception.diff(); const fmt = (n: { ref: string; role: string; name: string }) => `[${n.ref}] ${n.role} "${n.name}"`; return `${headerLine(await perception.state())}\n+ apparus (${d.added.length}):\n${d.added.map(fmt).join('\n') || '  (aucun)'}\n- disparus (${d.removed.length}):\n${d.removed.map(fmt).join('\n') || '  (aucun)'}`; } },
+    console_errors: { desc: 'Erreurs de l\'onglet cible depuis le debut (ou le dernier clear) : console.error/warn, exceptions non attrapees, requetes echouees, reponses HTTP 4xx/5xx. clear=true vide la liste apres lecture. Indispensable pour tester une app que tu viens de deployer.', shape: { clear: z.boolean().optional() }, run: async (a) => { if (!pageLog) return '(journal de console non disponible)'; const out = pageLog.format(); if (a.clear) pageLog.clear(); return out; } },
     network_requests: { desc: 'Lister les requetes reseau capturees de l\'onglet cible (url, statut, type), filtre par sous-chaine optionnel. Sans les corps.', shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
     fetch_with_session: { desc: 'Recuperer une URL avec les cookies de la session du navigateur (contexte de l\'onglet cible) ; le corps est ecrit sur disque, un chemin + resume est renvoye.', shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
     tabs_list: { desc: `Lister les onglets ouverts (id, url, titre, lequel est actif). ${PRIMARY_TAB_NOTE}`, shape: {}, run: async () => tabsLines(await tabs.list()) },
@@ -105,6 +108,7 @@ export async function main(): Promise<void> {
   const driver = await Driver.connect(cfg.cdpUrl, { viewport, defaultTimeoutMs: cfg.defaultTimeoutMs, browserCache: cfg.browserCache });
   const store = new ArtifactStore(cfg.dataDir);
   const network = new Network(driver, store); network.start();
+  const pageLog = new PageLog(driver); pageLog.start();
   const perception = new Perception(driver, store, cfg.readBudgetChars);
   let liveView: LiveViewLike | undefined;
   // Late-bound: liveView is created just below; the observer reads it at call time.
@@ -127,7 +131,7 @@ export async function main(): Promise<void> {
 
   liveView?.setViewportSink?.(async (v) => { mkdirSync(cfg.dataDir, { recursive: true }); writeFileSync(viewportFile, JSON.stringify(v)); });
 
-  const server = buildServer({ perception, action, network, liveView });
+  const server = buildServer({ perception, action, network, liveView, pageLog });
 
   // Exit cleanly when the client goes away. Over SSH (the primary wiring),
   // Claude Code kills the LOCAL ssh on shutdown; the remote node gets EOF on
