@@ -12,6 +12,21 @@ beforeAll(async () => {
 afterAll(async () => { await driver.close(); await env.stop(); });
 
 describe('Driver', () => {
+  it('setViewport resizes the current page, applies to later targets, and emits "viewport"', async () => {
+    const seen: any[] = [];
+    driver.on('viewport', (v) => seen.push(v));
+    await driver.setViewport({ width: 1280, height: 720 });
+    expect(driver.page().viewportSize()).toEqual({ width: 1280, height: 720 });
+    expect(seen.at(-1)).toEqual({ width: 1280, height: 720 });
+    const p = await driver.context().newPage();
+    driver.setPage(p);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(p.viewportSize()).toEqual({ width: 1280, height: 720 });
+    driver.setPage(driver.context().pages()[0]);
+    await p.close();
+    await driver.setViewport({ width: 1440, height: 900 });
+  });
+
   it('navigates and reads the title via evaluate', async () => {
     await driver.navigate(env.pageUrl);
     await driver.waitReady();

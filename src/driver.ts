@@ -51,6 +51,16 @@ export class Driver extends EventEmitter {
     });
   }
 
+  /** Current viewport (CSS px) applied to every target. */
+  viewport(): { width: number; height: number } { return { ...this.opts.viewport }; }
+
+  /** Change the viewport for the current target and every later one; emits 'viewport'. */
+  async setViewport(v: { width: number; height: number }): Promise<void> {
+    this.opts.viewport = { width: v.width, height: v.height };
+    await this._page.setViewportSize(this.opts.viewport);
+    this.emit('viewport', { ...this.opts.viewport });
+  }
+
   /** Move the target to another open tab. No-op when it's already the target. */
   setPage(page: Page): void {
     if (page === this._page) return;

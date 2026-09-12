@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import type { CDPSession } from 'playwright';
 import type { Driver } from './driver.js';
@@ -30,11 +30,32 @@ export interface VideoOpts {
   fps?: number;          // input cap; default 30
   bitrateKbps?: number;  // default 3000
   ffmpeg?: string;       // binary; default 'ffmpeg'
-  encoder?: string;      // default 'h264_nvenc'; tests use 'libx264'
+  encoder?: string;      // default: detectEncoder() (nvenc > videotoolbox > libx264); tests pin 'libx264'
   jpegQuality?: number;  // screencast JPEG quality fed to the encoder
 }
 
 export const VIDEO_MIME = 'video/mp4; codecs="avc1.42E01E"'; // Constrained Baseline 3.0
+
+/** Preferred H.264 encoders, best first: NVIDIA GPU, Apple GPU, software. */
+export const ENCODER_PREFERENCE = ['h264_nvenc', 'h264_videotoolbox', 'libx264'] as const;
+
+let detected: Promise<string | undefined> | undefined;
+/**
+ * Pick the best H.264 encoder this ffmpeg has (cached). Undefined when ffmpeg
+ * is missing or has none: the live view then serves JPEG only.
+ */
+export function detectEncoder(ffmpeg = 'ffmpeg'): Promise<string | undefined> {
+  if (!detected) {
+    detected = new Promise((resolve) => {
+      execFile(ffmpeg, ['-hide_banner', '-encoders'], { timeout: 10_000 }, (err, stdout) => {
+        if (err) return resolve(undefined);
+        const have = String(stdout);
+        resolve(ENCODER_PREFERENCE.find((e) => new RegExp(`\\s${e}\\s`).test(have)));
+      });
+    });
+  }
+  return detected;
+}
 
 /** Default target bitrate scaled to the frame: ~5 Mb/s at 1440x900, ~8 Mb/s at 1920x1080 (UI text needs it; VBR spends less on static pages). */
 export function defaultBitrateKbps(width: number, height: number): number {
@@ -50,9 +71,11 @@ export function ffmpegArgs(o: Required<Pick<VideoOpts, 'fps' | 'bitrateKbps' | '
   // case test pattern, visibly sharper text.
   const enc = o.encoder === 'h264_nvenc'
     ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'll', '-rc', 'vbr', '-cq', '19', '-spatial-aq', '1', '-temporal-aq', '1', '-zerolatency', '1']
-    : o.encoder === 'libx264'
-      ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency']
-      : ['-c:v', o.encoder];
+    : o.encoder === 'h264_videotoolbox'
+      ? ['-c:v', 'h264_videotoolbox', '-realtime', '1', '-allow_sw', '1']
+      : o.encoder === 'libx264'
+        ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency']
+        : ['-c:v', o.encoder];
   return [
     '-hide_banner', '-loglevel', 'error', '-nostdin',
     '-f', 'mjpeg', '-framerate', String(o.fps), '-use_wallclock_as_timestamps', '1', '-i', 'pipe:0',
@@ -132,7 +155,9 @@ export class VideoStream extends EventEmitter {
 
   private async doStart(): Promise<void> {
     const fps = this.opts.fps ?? 30;
-    const args = ffmpegArgs({ fps, bitrateKbps: this.opts.bitrateKbps ?? defaultBitrateKbps(this.opts.width, this.opts.height), encoder: this.opts.encoder ?? 'h264_nvenc' });
+    const encoder = this.opts.encoder ?? (await detectEncoder(this.opts.ffmpeg ?? 'ffmpeg'));
+    if (!encoder) throw new Error('aucun encodeur H.264 (ffmpeg absent ?) — vue live en JPEG seulement');
+    const args = ffmpegArgs({ fps, bitrateKbps: this.opts.bitrateKbps ?? defaultBitrateKbps(this.opts.width, this.opts.height), encoder });
     const proc = spawn(this.opts.ffmpeg ?? 'ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     this.proc = proc;
     this.splitter = new Mp4Splitter();

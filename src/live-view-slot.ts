@@ -18,6 +18,7 @@ export class LiveViewSlot implements LiveViewLike {
   private owner: LiveView | undefined;
   private follower: RemoteLiveView | undefined;
   private tabSelector: ((id: number) => Promise<void>) | undefined;
+  private viewportSink: ((v: { width: number; height: number }) => Promise<void>) | undefined;
   private promoting = false;
   private stopped = false;
 
@@ -46,6 +47,7 @@ export class LiveViewSlot implements LiveViewLike {
     }
     owner.setMode(this.current?.getMode?.() ?? 'read');
     owner.setTabSelector(this.tabSelector);
+    owner.setViewportSink(this.viewportSink);
     const old = this.follower; this.follower = undefined;
     this.owner = owner; this.current = owner;
     if (old) await old.stop();
@@ -69,5 +71,6 @@ export class LiveViewSlot implements LiveViewLike {
   isPaused(): boolean { return this.current.isPaused(); }
   waitWhilePaused(): Promise<void> { return this.current.waitWhilePaused(); }
   setTabSelector(fn: ((id: number) => Promise<void>) | undefined): void { this.tabSelector = fn; this.owner?.setTabSelector(fn); }
+  setViewportSink(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void { this.viewportSink = fn; this.owner?.setViewportSink(fn); }
   async stop(): Promise<void> { this.stopped = true; await this.current.stop(); }
 }

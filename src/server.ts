@@ -1,4 +1,6 @@
 import { pathToFileURL } from 'node:url';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -91,7 +93,15 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
 
 export async function main(): Promise<void> {
   const cfg = loadConfig();
-  const driver = await Driver.connect(cfg.cdpUrl, { viewport: cfg.viewport, defaultTimeoutMs: cfg.defaultTimeoutMs });
+  // A resolution picked from the viewer outlives the session: viewport.json
+  // in the data dir overrides SCRY_VIEWPORT_* until changed again.
+  const viewportFile = join(cfg.dataDir, 'viewport.json');
+  let viewport = cfg.viewport;
+  try {
+    const v = JSON.parse(readFileSync(viewportFile, 'utf8'));
+    if (Number.isInteger(v.width) && Number.isInteger(v.height) && v.width >= 640 && v.height >= 400) viewport = { width: v.width, height: v.height };
+  } catch { /* none saved */ }
+  const driver = await Driver.connect(cfg.cdpUrl, { viewport, defaultTimeoutMs: cfg.defaultTimeoutMs });
   const store = new ArtifactStore(cfg.dataDir);
   const network = new Network(driver, store); network.start();
   const perception = new Perception(driver, store, cfg.readBudgetChars);
@@ -113,6 +123,8 @@ export async function main(): Promise<void> {
   } else {
     console.error('[scry] SCRY_LIVE_SECRET absent : vue live desactivee.');
   }
+
+  liveView?.setViewportSink?.(async (v) => { mkdirSync(cfg.dataDir, { recursive: true }); writeFileSync(viewportFile, JSON.stringify(v)); });
 
   const server = buildServer({ perception, action, network, liveView });
 

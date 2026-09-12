@@ -99,6 +99,7 @@ export interface LiveViewLike {
   waitWhilePaused(): Promise<void>;
   stop(): Promise<void>;
   setTabSelector?(fn: ((id: number) => Promise<void>) | undefined): void;
+  setViewportSink?(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void;
 }
 
 export class LiveView implements LiveViewLike {
@@ -109,6 +110,7 @@ export class LiveView implements LiveViewLike {
   // params, so the cast can be re-attached when the target moves (tabs).
   private sessions = new Map<WebSocket, { cdp: CDPSession; params: ReturnType<typeof screencastParams> }>();
   private tabSelector: ((id: number) => Promise<void>) | undefined;
+  private viewportSink: ((v: { width: number; height: number }) => Promise<void>) | undefined;
   // Control clients: no screencast, they get mode/pause pushes and may set
   // mode, pause, and announce actions (a follower scry server).
   private controls = new Set<WebSocket>();
@@ -139,6 +141,28 @@ export class LiveView implements LiveViewLike {
     // screencast and the shared encoder re-attach to the new page, and the
     // tab chips update at once.
     driver.on('page', () => { void this.onTargetChanged(); });
+  }
+
+  /** Where a viewer-chosen resolution is persisted (server.ts writes viewport.json). */
+  setViewportSink(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void { this.viewportSink = fn; }
+
+  /**
+   * Resolution picked from the page. Bounded to what Chrome renders sanely;
+   * applied to the target (and later tabs), the shared encoder restarts at
+   * the new size, every viewer is told, and the choice is persisted.
+   */
+  async setViewport(w: unknown, h: unknown): Promise<void> {
+    const W = Number(w), H = Number(h);
+    if (!Number.isInteger(W) || !Number.isInteger(H) || W < 640 || H < 400 || W > 3840 || H > 2400) return;
+    await this.driver.setViewport({ width: W, height: H });
+    this.broadcast({ viewport: { w: W, h: H } });
+    if (this.videoViewers.size) {
+      this.broadcastTo(this.videoViewers, { video: { w: W, h: H, mime: VIDEO_MIME } });
+      if (this.video) { const v = this.video; this.video = undefined; await v.stop(); }
+      const v = this.ensureVideo();
+      try { await v.start(); } catch { /* exit handler tells viewers */ }
+    }
+    try { await this.viewportSink?.({ width: W, height: H }); } catch { /* persistence is best-effort */ }
   }
 
   /** Wire what a viewer's chip tap does ({t:'tab', id}); server.ts passes tabs.select. */
@@ -195,7 +219,7 @@ export class LiveView implements LiveViewLike {
 
   private ensureVideo(): VideoStream {
     if (this.video) return this.video;
-    const vp = this.driver.page().viewportSize() ?? { width: 1440, height: 900 };
+    const vp = this.driver.viewport();
     const v = new VideoStream(this.driver, { width: vp.width, height: vp.height, ...(this.opts.video || {}) });
     v.on('init', (b: Buffer) => this.sendVideo(Buffer.concat([Buffer.from([1]), b])));
     v.on('segment', (b: Buffer) => this.sendVideo(Buffer.concat([Buffer.from([2]), b])));
@@ -227,7 +251,7 @@ export class LiveView implements LiveViewLike {
   private async subscribeVideo(ws: WebSocket): Promise<void> {
     const v = this.ensureVideo();
     this.videoViewers.add(ws);
-    const vp = this.driver.page().viewportSize() ?? { width: 1440, height: 900 };
+    const vp = this.driver.viewport();
     try { ws.send(JSON.stringify({ video: { w: vp.width, h: vp.height, mime: VIDEO_MIME }, mode: this.mode })); } catch { /* dead */ }
     if (v.isRunning) v.restart(); // fresh init + keyframe for the newcomer (and everyone)
     else {
@@ -512,6 +536,7 @@ export class LiveView implements LiveViewLike {
     this.sessions.set(ws, st);
     this.syncTabsPolling();
     void this.pushTabs(ws); // this viewer gets the list right away
+    { const vp = this.driver.viewport(); try { ws.send(JSON.stringify({ viewport: { w: vp.width, h: vp.height } })); } catch { /* dead */ } }
     if (this.paused) { try { ws.send(JSON.stringify({ paused: true })); } catch { /* dead socket */ } }
 
     // Hand-the-wheel input relay. Wired only once the socket is confirmed open
@@ -541,6 +566,7 @@ export class LiveView implements LiveViewLike {
         const { t, ...rest } = msg;
         if (t === 'view') { resize({ w: rest.w, h: rest.h }); return; }
         if (t === 'tab') { if (Number.isInteger(rest.id) && this.tabSelector) await this.tabSelector(rest.id).catch(() => {}); return; }
+        if (t === 'viewport') { await this.setViewport(rest.w, rest.h); return; }
         // William takes / gives back control from the page itself. The token
         // holder is William (signed, expiring link), and the same switch is
         // what the live_mode tool does; only the mode string is read.

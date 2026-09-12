@@ -527,6 +527,29 @@ describe('LiveView (integration)', () => {
     } finally { live.setTabSelector(undefined); ws.close(); }
   });
 
+  it('a viewer can change the resolution: {t:"viewport", w, h} resizes the target and everyone is told', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    const saved: any[] = [];
+    live.setViewportSink(async (v) => { saved.push(v); });
+    try {
+      const pushed = new Promise<any>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('no viewport push')), 4000);
+        ws.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && m.viewport && m.viewport.w === 1280) { clearTimeout(t); resolve(m.viewport); } });
+      });
+      ws.send(JSON.stringify({ t: 'viewport', w: 1280, h: 720 }));
+      expect((await pushed).h).toBe(720);
+      expect(driver.page().viewportSize()).toEqual({ width: 1280, height: 720 });
+      expect(saved.at(-1)).toEqual({ width: 1280, height: 720 });
+      ws.send(JSON.stringify({ t: 'viewport', w: 99999, h: 10 })); // out of bounds: ignored
+      await new Promise((r) => setTimeout(r, 300));
+      expect(driver.page().viewportSize()).toEqual({ width: 1280, height: 720 });
+    } finally {
+      live.setViewportSink(undefined);
+      await driver.setViewport({ width: 1440, height: 900 });
+      ws.close();
+    }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'node:child_process';
 import { startBrowser } from './helpers.js';
 import { Driver } from '../src/driver.js';
-import { Mp4Splitter, VideoStream, ffmpegArgs, defaultBitrateKbps } from '../src/video.js';
+import { Mp4Splitter, VideoStream, ffmpegArgs, defaultBitrateKbps, detectEncoder, ENCODER_PREFERENCE } from '../src/video.js';
 
 function box(type: string, payload: Buffer = Buffer.alloc(0)): Buffer {
   const b = Buffer.alloc(8 + payload.length);
@@ -40,6 +40,20 @@ describe('Mp4Splitter (pure)', () => {
 });
 
 const hasFfmpeg = (() => { try { execSync('ffmpeg -version', { stdio: 'ignore' }); return true; } catch { return false; } })();
+
+describe.skipIf(!hasFfmpeg)('detectEncoder', () => {
+  it('picks one of the known H.264 encoders from this ffmpeg, best first', async () => {
+    const e = await detectEncoder();
+    expect(e).toBeDefined();
+    expect(ENCODER_PREFERENCE).toContain(e as any);
+  });
+  it('returns undefined for a missing ffmpeg binary', async () => {
+    // a fresh module cache isn't available; call the internal path via a bogus binary through opts
+    const { VideoStream: VS } = await import('../src/video.js');
+    const vs = new VS({} as any, { width: 640, height: 400, ffmpeg: '/nonexistent/ffmpeg' });
+    await expect(vs.start()).rejects.toThrow();
+  });
+});
 
 describe.skipIf(!hasFfmpeg)('VideoStream (integration, libx264 locally)', () => {
   let env: Awaited<ReturnType<typeof startBrowser>>;

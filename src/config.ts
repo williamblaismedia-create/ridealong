@@ -24,8 +24,8 @@ export interface Config {
   /**
    * Video path (H.264 fMP4 over the live-view websocket, encoded by ffmpeg).
    * SCRY_VIDEO=off disables it (viewers get JPEG frames only). SCRY_FFMPEG
-   * (binary), SCRY_VIDEO_ENCODER (h264_nvenc default; libx264 on a box
-   * without an NVIDIA GPU), SCRY_VIDEO_KBPS (default scales with the viewport:
+   * (binary), SCRY_VIDEO_ENCODER (default: auto — h264_nvenc, else
+   * h264_videotoolbox on a Mac, else libx264), SCRY_VIDEO_KBPS (default scales with the viewport:
    * ~5000 at 1440x900, ~8000 at 1920x1080), SCRY_VIDEO_FPS (30).
    */
   video: false | { ffmpeg?: string; encoder?: string; bitrateKbps?: number; fps?: number };

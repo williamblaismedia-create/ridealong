@@ -95,8 +95,10 @@
   /* Scene : l'ecran distant dans un cadre — bandeau (url, resolution,
      cadence, capture, plein ecran), repères de visee aux coins, liseret
      terracotta quand William a le controle. */
+  /* Centre par rapport a l'ecran entier (marges symetriques) ; la hauteur
+     max garantit que le cadre ne passe jamais sous le notch. */
   #stage { display: flex; justify-content: center; align-items: center; height: 100%;
-    padding: calc(var(--bar) + 24px) 24px 24px; }
+    padding: 24px; }
   #lens { position: relative; display: inline-block; max-width: 100%; }
   #frame { display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
     background: rgba(26, 23, 20, 0.85); border: 1px solid rgba(255, 255, 255, 0.09);
@@ -130,6 +132,19 @@
   #url span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.02em; color: var(--warm-200); }
   #meta { display: flex; align-items: center; gap: 4px; }
   #meta .stat { padding: 0 8px; letter-spacing: 0.08em; white-space: nowrap; }
+  /* Resolution : le chiffre est un bouton, un petit menu de presets s'ouvre dessous. */
+  #resbtn { font: inherit; letter-spacing: 0.08em; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--warm-200); cursor: pointer; touch-action: manipulation; }
+  #resbtn:hover { background: rgba(255, 255, 255, 0.07); color: var(--warm-25); }
+  #resbtn:focus-visible { outline: none; box-shadow: var(--ring-focus-inverse); }
+  #resmenu { position: absolute; right: 0; top: 40px; z-index: 5; min-width: 168px; padding: 6px; border-radius: 12px;
+    background: rgba(26, 23, 20, 0.97); border: 1px solid var(--border-inverse); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); display: none; }
+  #resmenu.open { display: block; }
+  #resmenu button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--warm-200); font: 500 12px/1 var(--font-mono); letter-spacing: 0.04em; cursor: pointer; text-align: left; }
+  #resmenu button small { color: var(--warm-500); font: 500 10px/1 var(--font-sans); letter-spacing: 0; }
+  #resmenu button:hover { background: rgba(255, 255, 255, 0.07); color: var(--warm-25); }
+  #resmenu button.cur { color: var(--terra-400); }
+  #meta { position: relative; }
   #meta .stat b { font-weight: 600; color: var(--warm-200); }
   #meta .sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.1); }
   .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px;
@@ -139,7 +154,7 @@
   .icon-btn:active { transform: scale(0.92); }
   .icon-btn:focus-visible { outline: none; box-shadow: var(--ring-focus-inverse); }
   .icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  #screen { display: block; max-width: calc((100vw - 48px) * 0.92); max-height: calc((100vh - var(--bar) - 48px - 72px) * 0.92); width: auto; height: auto;
+  #screen { display: block; max-width: calc((100vw - 48px) * 0.92); max-height: calc((100vh - 2 * (var(--bar) + 24px) - 72px) * 0.94); width: auto; height: auto;
     background: var(--warm-900); touch-action: none; -webkit-user-select: none; user-select: none;
     transition: opacity var(--dur) var(--ease-out); }
   #tv { display: none; position: absolute; inset: 0; width: 100%; height: 100%; background: var(--warm-900); border-radius: 0; }
@@ -219,10 +234,10 @@
   @media (max-width: 520px) {
     #bar { gap: 14px; padding: 8px 10px 10px 16px; border-radius: 0 0 20px 20px; }
     #wordmark { font-size: 17px; }
-    #stage { padding: calc(var(--bar) + 22px) 12px 12px; }
+    #stage { padding: 12px; }
     #hint { font-size: 10px; letter-spacing: 0.12em; padding: 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #pause { width: 36px; height: 36px; }
-    #screen { max-width: calc(100vw - 24px); max-height: calc(100vh - var(--bar) - 30px - 72px); }
+    #screen { max-width: calc(100vw - 24px); max-height: calc(100vh - 2 * (var(--bar) + 12px) - 72px); }
     #tabstrip { padding: 4px 6px 0; height: 32px; }
     .tab { min-width: 72px; max-width: 150px; height: 27px; padding: 0 10px; font-size: 11px; }
     #meta .stat.res { display: none; }
@@ -267,7 +282,8 @@
         <div id="chrome">
           <div id="url"><svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor"/><path d="M4 5V3.5a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span id="urltext">—</span></div>
           <div id="meta">
-            <span class="stat res"><b id="res">—</b></span>
+            <span class="stat res"><button id="resbtn" type="button" title="Changer la résolution" aria-haspopup="menu"><b id="res">—</b></button></span>
+            <div id="resmenu" role="menu" aria-label="résolution"></div>
             <span class="sep"></span>
             <span class="stat"><b id="fps">0</b> i/s</span>
             <span class="sep"></span>
@@ -393,6 +409,7 @@
       }
       if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
       if (Array.isArray(msg.tabs)) renderTabs(msg.tabs);
+      if (msg.viewport) onViewport(msg.viewport);
       if (msg.action) onAction(msg.action);
       if (typeof msg.paused === 'boolean') setPaused(msg.paused);
       if (typeof msg.data === 'string') {
@@ -403,7 +420,7 @@
         blip();
         frames++;
         if (typeof msg.url === 'string' && msg.url !== lastUrl) { lastUrl = msg.url; urlText.textContent = prettyUrl(msg.url); }
-        if (frameW && frameH) resEl.textContent = frameW + ' × ' + frameH;
+        if (frameW && frameH && !curVp) resEl.textContent = frameW + ' × ' + frameH;
       }
     };
   }
@@ -464,20 +481,44 @@
     var start = tv.buffered.start(0), cut = tv.currentTime - 8;
     if (force || cut - start > 20) { try { sb.remove(start, Math.max(start + 0.1, cut)); } catch (e) {} }
   }
-  // Rester au direct : si on traine de plus de 0.6 s derriere le bord, on saute.
+  // Rester au direct. En Auto on tolere 0.6 s de retard (image plus stable) ;
+  // en Manuel chaque clic compte : cible 0.15 s, rattrapage doux en accelerant
+  // la lecture, saut seulement si on decroche vraiment.
   setInterval(function () {
     if (!videoUp || !tv.buffered.length) return;
-    var end = tv.buffered.end(tv.buffered.length - 1);
-    if (end - tv.currentTime > 0.6) tv.currentTime = Math.max(0, end - 0.12);
+    var end = tv.buffered.end(tv.buffered.length - 1), lag = end - tv.currentTime;
+    var manual = mode === 'input';
+    if (lag > (manual ? 0.5 : 0.9)) { tv.currentTime = Math.max(0, end - 0.08); tv.playbackRate = 1; }
+    else if (manual && lag > 0.18) tv.playbackRate = 1.25;
+    else if (!manual && lag > 0.6) tv.playbackRate = 1.1;
+    else tv.playbackRate = 1;
     if (tv.paused) tv.play().catch(function () {});
     trimVideo(false);
-  }, 1000);
+  }, 250);
   vbtn.addEventListener('click', function () {
     wantVideo = !wantVideo; videoFailed = false;
     try { sessionStorage.setItem('scry.video', wantVideo ? 'on' : 'off'); } catch (e) {}
     try { ws.close(); } catch (e) {} // reconnect with the other path
     retryMs = 300;
   });
+
+  // Resolution du viewport distant : presets, applique a chaud par le serveur
+  // (le flux redemarre a la nouvelle taille), memorise entre les sessions.
+  var PRESETS = [[1280, 720, 'HD'], [1440, 900, 'Mac'], [1600, 900, 'HD+'], [1920, 1080, 'Full HD'], [2560, 1440, '2K']];
+  var resbtn = document.getElementById('resbtn'), resmenu = document.getElementById('resmenu'), curVp = null;
+  function renderResMenu() {
+    resmenu.textContent = '';
+    PRESETS.forEach(function (p) {
+      var b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitem');
+      b.className = (curVp && curVp.w === p[0] && curVp.h === p[1]) ? 'cur' : '';
+      b.innerHTML = '<span>' + p[0] + ' × ' + p[1] + '</span><small>' + p[2] + '</small>';
+      b.addEventListener('click', function () { send({ t: 'viewport', w: p[0], h: p[1] }); resmenu.classList.remove('open'); });
+      resmenu.appendChild(b);
+    });
+  }
+  resbtn.addEventListener('click', function (e) { e.stopPropagation(); renderResMenu(); resmenu.classList.toggle('open'); });
+  document.addEventListener('click', function () { resmenu.classList.remove('open'); });
+  function onViewport(v) { curVp = v; resEl.textContent = v.w + ' × ' + v.h; if (!videoUp) { frameW = v.w; frameH = v.h; } }
 
   // Bandeau : onglets, resolution, cadence (images recues par seconde).
   var tabsEl = document.getElementById('tabstrip'), urlText = document.getElementById('urltext'), resEl = document.getElementById('res'), fpsEl = document.getElementById('fps');
