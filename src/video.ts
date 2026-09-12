@@ -50,7 +50,9 @@ export function ffmpegArgs(o: Required<Pick<VideoOpts, 'fps' | 'bitrateKbps' | '
     '-vf', 'format=yuv420p',
     ...enc,
     '-b:v', `${o.bitrateKbps}k`, '-maxrate', `${Math.round(o.bitrateKbps * 1.3)}k`, '-bufsize', `${Math.round(o.bitrateKbps / 3)}k`,
-    '-g', String(o.fps * 2), '-bf', '0', '-profile:v', 'baseline', '-level', '3.1',
+    // No explicit -level: h264_nvenc rejects it ("incorrect parameters") and
+    // picks the right one from the size/rate itself. Verified on w-agent.
+    '-g', String(o.fps * 2), '-bf', '0', '-profile:v', 'baseline',
     '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '100000',
     'pipe:1',
   ];
