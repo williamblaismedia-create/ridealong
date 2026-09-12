@@ -29,6 +29,22 @@ describe('Action', () => {
     expect(await driver.page().locator('#name').inputValue()).toBe('Ada');
   });
 
+  it('reports the target centre (page CSS px) to an onTarget callback before acting', async () => {
+    const seen: any[] = [];
+    const a = new Action(driver, undefined, (ev) => seen.push(ev));
+    const { nodes } = await snapshotWithRefs(driver.page());
+    const go = nodes.find((n) => n.role === 'button' && n.name === 'Go')!;
+    await a.act(go.ref, 'click');
+    expect(seen).toHaveLength(1);
+    expect(seen[0].verb).toBe('click');
+    expect(seen[0].x).toBeGreaterThan(0);
+    expect(seen[0].y).toBeGreaterThan(0);
+    expect(seen[0].label).toContain('Go');
+    // typed text is NOT part of the event (the log must not echo what Claude types)
+    await a.act(nodes.find((n) => n.role === 'textbox' && n.name === 'Your name')!.ref, 'type', 'Secret123');
+    expect(JSON.stringify(seen)).not.toContain('Secret123');
+  });
+
   it('rejects an unknown verb', async () => {
     const { nodes } = await snapshotWithRefs(driver.page());
     const go = nodes.find((n) => n.role === 'button' && n.name === 'Go')!;

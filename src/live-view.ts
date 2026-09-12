@@ -93,6 +93,10 @@ export class LiveView {
   // sent only when it changed. The PRIMARY tab (the one being cast) is marked.
   private tabsTimer: NodeJS.Timeout | undefined;
   private lastTabsJson = '';
+  // Pause: William freezes Claude from the page without taking control.
+  // Action tools await waitWhilePaused() before running (server.ts).
+  private paused = false;
+  private pauseWaiters: Array<() => void> = [];
 
   /**
    * pingMs: interval of the server-side websocket pings that keep an idle
@@ -157,6 +161,39 @@ export class LiveView {
       this.tabsTimer = undefined;
       this.lastTabsJson = '';
     }
+  }
+
+  /** Send one JSON message to every attached viewer (best-effort). */
+  private broadcast(obj: unknown): void {
+    const payload = JSON.stringify(obj);
+    for (const ws of this.sessions.keys()) {
+      if (ws.readyState === ws.OPEN) { try { ws.send(payload); } catch { /* cleaned up elsewhere */ } }
+    }
+  }
+
+  /**
+   * Tell viewers what Claude is about to do: kind/verb, a label (role and
+   * accessible name only — never typed text), and the target centre in page
+   * CSS px when known. Server->client only; nothing is retained.
+   */
+  announce(ev: { kind: string; label: string; x?: number; y?: number }): void {
+    this.broadcast({ action: { kind: ev.kind, label: ev.label, x: ev.x, y: ev.y, at: Date.now() } });
+  }
+
+  /** Pause/resume Claude's actions; viewers are told. */
+  setPaused(on: boolean): void {
+    if (this.paused === on) { this.broadcast({ paused: on }); return; }
+    this.paused = on;
+    this.broadcast({ paused: on });
+    if (!on) { const w = this.pauseWaiters; this.pauseWaiters = []; for (const r of w) r(); }
+  }
+
+  isPaused(): boolean { return this.paused; }
+
+  /** Resolves at once when not paused, else when resumed (or on stop()). */
+  waitWhilePaused(): Promise<void> {
+    if (!this.paused) return Promise.resolve();
+    return new Promise<void>((resolve) => this.pauseWaiters.push(resolve));
   }
 
   /** Current mode. For tools/tests — not part of any capture path. */
@@ -358,6 +395,7 @@ export class LiveView {
     this.sessions.set(ws, cdp);
     this.syncTabsPolling();
     void this.pushTabs(ws); // this viewer gets the list right away
+    if (this.paused) { try { ws.send(JSON.stringify({ paused: true })); } catch { /* dead socket */ } }
 
     // Hand-the-wheel input relay. Wired only once the socket is confirmed open
     // with `cdp` attached. NO-CAPTURE: besides the `cdp.send` call itself, this
@@ -391,6 +429,7 @@ export class LiveView {
         // holder is William (signed, expiring link), and the same switch is
         // what the live_mode tool does; only the mode string is read.
         if (t === 'mode') { if (rest.mode === 'read' || rest.mode === 'input') this.setMode(rest.mode); return; }
+        if (t === 'pause') { this.setPaused(rest.on === true); return; }
         if (this.mode !== 'input') return; // read mode: input is ignored entirely
         if (t === 'mouse') await cdp!.send('Input.dispatchMouseEvent', rest);
         else if (t === 'key') await cdp!.send('Input.dispatchKeyEvent', rest);
@@ -443,6 +482,7 @@ export class LiveView {
     }
     this.sessions.clear();
     this.syncTabsPolling();
+    this.setPaused(false); // never leave a tool call hanging on a gone viewer
 
     // M5: terminate any client that passed the token check but isn't in
     // `sessions` yet (still mid-attach), or wss.close() below waits on it.

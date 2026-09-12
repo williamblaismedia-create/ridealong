@@ -80,6 +80,17 @@ describe('buildServer with a liveView', () => {
     expect(out).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${LIVE_PORT}/#token=\\d+\\.[0-9a-f]+$`));
   });
 
+  it('action tools wait while the viewer has paused Claude; navigate/act resume on unpause', async () => {
+    liveView.setPaused(true);
+    let done = false;
+    const p = serverWithLive.callTool('scroll', { dir: 'down', amount: 10 }).then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(done).toBe(false);
+    liveView.setPaused(false);
+    await p;
+    expect(done).toBe(true);
+  });
+
   it('live_mode flips the LiveView mode', async () => {
     expect(liveView.getMode()).toBe('read');
     await serverWithLive.callTool('live_mode', { mode: 'input' });

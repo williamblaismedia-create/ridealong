@@ -43,7 +43,7 @@
   /* Barre : etiquette mono a gauche, action en pilule a droite. */
   /* Le notch : une capsule accrochee au bord superieur, coins arrondis vers
      le bas, flottante au-dessus de l'ecran. Point | SCRY | toggle. */
-  #bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 2;
+  #bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 2; width: max-content; max-width: calc(100vw - 16px);
     display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 18px;
     min-height: var(--bar); padding: 10px 14px 12px 20px;
     background: rgba(26, 23, 20, 0.92); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -142,8 +142,59 @@
   .tick.bl { bottom: -11px; left: -11px; border-bottom-width: 1.5px; border-left-width: 1.5px; border-bottom-left-radius: 4px; }
   .tick.br { bottom: -11px; right: -11px; border-bottom-width: 1.5px; border-right-width: 1.5px; border-bottom-right-radius: 4px; }
   body.input .tick { border-color: var(--terra-400); opacity: 0.9; }
+  /* Curseur de Claude : un orbe terracotta qui glisse vers la cible, une
+     onde au clic, s'efface apres quelques secondes sans action. */
+  #shot { position: relative; }
+  #cursor { position: absolute; left: 0; top: 0; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; z-index: 3;
+    opacity: 0; transform: translate(0, 0); transition: transform 320ms var(--ease-out), opacity var(--dur) var(--ease-out); }
+  #cursor.show { opacity: 1; }
+  #cursor .ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--terra-500);
+    box-shadow: 0 0 0 1px rgba(14, 12, 10, 0.6), 0 0 12px rgba(218, 119, 86, 0.55); background: rgba(218, 119, 86, 0.14); }
+  #cursor .core { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--terra-500); }
+  #cursor .ripple { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--terra-400); opacity: 0; }
+  #cursor.click .ripple { animation: ripple 620ms var(--ease-out) forwards; }
+  @keyframes ripple { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(3.2); opacity: 0; } }
+  #cursor .tag { position: absolute; left: 18px; top: -4px; white-space: nowrap; font: 500 10px/1 var(--font-mono); letter-spacing: 0.06em;
+    color: var(--warm-25); background: rgba(26, 23, 20, 0.9); border: 1px solid rgba(218, 119, 86, 0.5); border-radius: 6px; padding: 5px 7px;
+    max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Journal des actions : panneau repliable a droite, mono, discret. */
+  #journal { position: fixed; top: 0; right: 0; bottom: 0; width: 300px; z-index: 4; display: flex; flex-direction: column;
+    background: rgba(26, 23, 20, 0.94); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border-left: 1px solid var(--border-inverse); transform: translateX(100%); transition: transform var(--dur) var(--ease-out); }
+  body.journal #journal { transform: none; }
+  #journal header { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 12px 0 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07); font: 500 11px/1 var(--font-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--warm-400); }
+  #entries { flex: 1; overflow-y: auto; padding: 8px 0; margin: 0; list-style: none; scrollbar-width: thin; }
+  #entries li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 7px 16px; font: 400 12px/1.35 var(--font-mono); color: var(--warm-200);
+    border-left: 2px solid transparent; animation: entry 360ms var(--ease-out); }
+  #entries li time { color: var(--warm-500); font-size: 11px; }
+  #entries li.click, #entries li.type, #entries li.press, #entries li.hover { border-left-color: var(--terra-500); }
+  #entries li.navigate, #entries li.tab { border-left-color: var(--warm-400); }
+  #entries li.pause { color: var(--amber-500); }
+  #entries li.empty { color: var(--warm-500); font-style: italic; }
+  @keyframes entry { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
+  #jbtn.on { color: var(--terra-400); }
+  body.journal #stage { padding-right: 324px; }
+  body.journal #screen { max-width: calc(100vw - 48px - 300px); }
+
+  /* Pause : bouton rond dans le notch ; en pause, le notch vire a l'ambre. */
+  #pause { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border-inverse); background: var(--warm-800); color: var(--warm-25);
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation;
+    transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-spring), opacity var(--dur) var(--ease-out); }
+  #pause:hover { background: var(--warm-700); }
+  #pause:active { transform: scale(0.94); }
+  #pause:focus-visible { outline: none; box-shadow: var(--ring-focus-inverse); }
+  #pause:disabled { opacity: 0.45; cursor: default; }
+  #pause svg { width: 14px; height: 14px; fill: currentColor; }
+  #pause .play { display: none; }
+  body.paused #pause { background: var(--amber-500); border-color: var(--amber-500); color: #1A1714; }
+  body.paused #pause .pause { display: none; }
+  body.paused #pause .play { display: block; }
+  body.paused #bar { border-color: rgba(197, 136, 42, 0.55); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(197, 136, 42, 0.35); }
+
   /* Plein ecran : le cadre prend tout, sans chrome ni notch. */
-  body.fs #bar, body.fs #hint, body.fs .tick { display: none; }
+  body.fs #bar, body.fs #hint, body.fs .tick, body.fs #journal { display: none; }
   body.fs #stage { padding: 0; }
   body.fs #frame { border-radius: 0; border: 0; box-shadow: none; }
   body.fs #chrome { display: none; }
@@ -153,13 +204,18 @@
   @media (max-width: 520px) {
     #bar { gap: 14px; padding: 8px 10px 10px 16px; border-radius: 0 0 20px 20px; }
     #wordmark { font-size: 17px; }
-    #stage { padding: calc(var(--bar) + 18px) 12px 12px; }
+    #stage { padding: calc(var(--bar) + 22px) 12px 12px; }
+    #hint { font-size: 10px; letter-spacing: 0.12em; padding: 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #pause { width: 36px; height: 36px; }
     #screen { max-width: calc(100vw - 24px); max-height: calc(100vh - var(--bar) - 30px - 36px); }
     #meta .stat.res { display: none; }
+    #journal { width: 100%; }
+    body.journal #stage { padding-right: 12px; }
+    body.journal #screen { max-width: calc(100vw - 24px); }
+    #cursor .tag { display: none; }
     .tick { display: none; }
     #mode { min-height: 36px; }
     #mode button { min-width: 64px; padding: 0 10px; font-size: 12px; }
-    #stage { padding: 8px; }
   }
 </style>
 </head>
@@ -174,6 +230,10 @@
     </div>
     <div id="wordmark">Scry</div>
     <div id="right">
+      <button id="pause" type="button" title="Mettre Claude en pause" aria-label="Mettre Claude en pause" disabled>
+        <svg class="pause" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1.5" width="3.6" height="11" rx="1"/><rect x="8.4" y="1.5" width="3.6" height="11" rx="1"/></svg>
+        <svg class="play" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 1.8v10.4L12 7z"/></svg>
+      </button>
       <div id="mode" class="read off" role="radiogroup" aria-label="mode">
         <button id="seg-auto" type="button" role="radio" aria-checked="true" disabled>Auto</button>
         <button id="seg-manual" type="button" role="radio" aria-checked="false" disabled>Manuel</button>
@@ -193,6 +253,9 @@
             <span class="sep"></span>
             <span class="stat"><b id="fps">0</b> i/s</span>
             <span class="sep"></span>
+            <button class="icon-btn" id="jbtn" type="button" title="Journal des actions" aria-label="Journal des actions">
+              <svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg>
+            </button>
             <button class="icon-btn" id="snap" type="button" title="Capturer l'image" aria-label="Capturer l'image">
               <svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.4-2h5.2L16 6h1.5A2.5 2.5 0 0 1 20 8.5V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.2"/></svg>
             </button>
@@ -201,10 +264,17 @@
             </button>
           </div>
         </div>
-        <img id="screen" alt="vue live">
+        <div id="shot">
+          <img id="screen" alt="vue live">
+          <div id="cursor" aria-hidden="true"><span class="ripple"></span><span class="ring"></span><span class="core"></span><span class="tag"></span></div>
+        </div>
       </div>
     </div>
   </div>
+  <aside id="journal" aria-label="journal des actions">
+    <header><span>Journal</span><button class="icon-btn" id="jclose" type="button" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+    <ul id="entries"><li class="empty"><time></time><span>aucune action encore</span></li></ul>
+  </aside>
 <script>
 (function () {
   // Token from the fragment only (never the query string), then scrub it from
@@ -239,7 +309,8 @@
     var barH = bar.offsetHeight || 41;
     document.documentElement.style.setProperty('--bar', barH + 'px');
     var fs = document.body.classList.contains('fs');
-    var w = Math.max(1, window.innerWidth - (fs ? 0 : 48)), h = Math.max(1, window.innerHeight - (fs ? 0 : barH + 48 + 36));
+    var side = (!fs && document.body.classList.contains('journal') && window.innerWidth > 520) ? 300 : 0;
+    var w = Math.max(1, window.innerWidth - (fs ? 0 : 48) - side), h = Math.max(1, window.innerHeight - (fs ? 0 : barH + 48 + 36));
     return { w: Math.round(w * dpr), h: Math.round(h * dpr) };
   }
   var vs = viewSize();
@@ -274,6 +345,8 @@
       if (!msg) return;
       if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
       if (Array.isArray(msg.tabs)) renderTabs(msg.tabs);
+      if (msg.action) onAction(msg.action);
+      if (typeof msg.paused === 'boolean') setPaused(msg.paused);
       if (typeof msg.data === 'string') {
         if (msg.w) frameW = msg.w;
         if (msg.h) frameH = msg.h;
@@ -342,6 +415,56 @@
   document.addEventListener('fullscreenchange', function () { setFs(!!document.fullscreenElement); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('fs') && !document.fullscreenElement) setFs(false); });
 
+  // Curseur de Claude + journal. Les coordonnees arrivent en px CSS de la
+  // page distante ; on les projette sur l'image affichee.
+  var cursor = document.getElementById('cursor'), cursorTag = cursor.querySelector('.tag'), entries = document.getElementById('entries');
+  var cursorTimer = 0, journalOpen = false;
+  function toView(x, y) { var r = img.getBoundingClientRect(); if (!r.width || !frameW || !frameH) return null; return { x: x / frameW * r.width, y: y / frameH * r.height }; }
+  function onAction(a) {
+    var label = String(a.label || a.kind || '');
+    if (typeof a.x === 'number' && typeof a.y === 'number') {
+      var v = toView(a.x, a.y);
+      if (v) {
+        cursor.style.transform = 'translate(' + v.x.toFixed(1) + 'px,' + v.y.toFixed(1) + 'px)';
+        cursorTag.textContent = label;
+        cursor.classList.add('show');
+        cursor.classList.remove('click'); void cursor.offsetWidth;
+        if (a.kind === 'click' || a.kind === 'press' || a.kind === 'type') cursor.classList.add('click');
+        clearTimeout(cursorTimer);
+        cursorTimer = setTimeout(function () { cursor.classList.remove('show'); }, 4500);
+      }
+    }
+    addEntry(a.kind || 'action', label, a.at);
+    hint.textContent = label.slice(0, 60);
+    clearTimeout(onAction.hintTimer);
+    onAction.hintTimer = setTimeout(function () { if (hint.textContent === label.slice(0, 60)) hint.textContent = ''; }, 3000);
+  }
+  function addEntry(kind, label, at) {
+    var empty = entries.querySelector('.empty'); if (empty) empty.remove();
+    var li = document.createElement('li'); li.className = kind;
+    var t = document.createElement('time'); var d = at ? new Date(at) : new Date();
+    t.textContent = d.toTimeString().slice(0, 8);
+    var sp = document.createElement('span'); sp.textContent = label;
+    li.appendChild(t); li.appendChild(sp); entries.appendChild(li);
+    while (entries.children.length > 300) entries.removeChild(entries.firstChild);
+    entries.scrollTop = entries.scrollHeight;
+  }
+  var jbtn = document.getElementById('jbtn');
+  function setJournal(on) { journalOpen = on; document.body.classList.toggle('journal', on); jbtn.classList.toggle('on', on); window.dispatchEvent(new Event('resize')); }
+  jbtn.addEventListener('click', function () { setJournal(!journalOpen); });
+  document.getElementById('jclose').addEventListener('click', function () { setJournal(false); });
+
+  // Pause : fige les actions de Claude sans prendre le controle.
+  var pauseBtn = document.getElementById('pause'), paused = false;
+  function setPaused(on) {
+    if (on === paused) return;
+    paused = on;
+    document.body.classList.toggle('paused', on);
+    pauseBtn.title = on ? 'Reprendre' : 'Mettre Claude en pause';
+    addEntry('pause', on ? 'pause — Claude attend' : 'reprise');
+  }
+  pauseBtn.addEventListener('click', function () { send({ t: 'pause', on: !paused }); });
+
   // The dot beats once per received frame (rate-limited so a 30 fps burst
   // reads as a lively flutter, not a strobe).
   var blipUntil = 0, blipTimer = 0;
@@ -368,7 +491,7 @@
   // Auto / Manuel from the page itself (the same switch as the live_mode
   // tool). Enabled only while connected; the server confirms the new mode
   // with a {mode} push, which is what actually moves the toggle.
-  function setEnabled(on) { segAuto.disabled = !on; segManual.disabled = !on; modeEl.classList.toggle('off', !on); }
+  function setEnabled(on) { segAuto.disabled = !on; segManual.disabled = !on; pauseBtn.disabled = !on; modeEl.classList.toggle('off', !on); }
   segAuto.addEventListener('click', function () { if (mode !== 'read') send({ t: 'mode', mode: 'read' }); });
   segManual.addEventListener('click', function () { if (mode !== 'input') { send({ t: 'mode', mode: 'input' }); try { kb.focus(); } catch (x) {} } });
 

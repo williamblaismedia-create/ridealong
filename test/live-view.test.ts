@@ -421,6 +421,39 @@ describe('LiveView (integration)', () => {
     }
   });
 
+  it('announce() pushes an {action} event to attached viewers (Claude\'s cursor + journal)', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      const got = new Promise<any>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no action push')), 2000);
+        ws.on('message', (data) => { let m: any; try { m = JSON.parse(data.toString()); } catch { return; } if (m && m.action) { clearTimeout(timer); resolve(m.action); } });
+      });
+      live.announce({ kind: 'click', label: 'click button "Go"', x: 120, y: 340 });
+      const a = await got;
+      expect(a.kind).toBe('click');
+      expect(a.x).toBe(120);
+      expect(typeof a.at).toBe('number');
+    } finally { ws.close(); }
+  });
+
+  it('a viewer can pause Claude with {t:"pause"}: waitWhilePaused blocks until resumed, and viewers are told', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      const pausedPush = new Promise<any>((resolve) => ws.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && m.paused === true) resolve(m); }));
+      ws.send(JSON.stringify({ t: 'pause', on: true }));
+      await pausedPush;
+      expect(live.isPaused()).toBe(true);
+      let released = false;
+      const gate = live.waitWhilePaused().then(() => { released = true; });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(released).toBe(false);
+      ws.send(JSON.stringify({ t: 'pause', on: false }));
+      await gate;
+      expect(released).toBe(true);
+      expect(live.isPaused()).toBe(false);
+    } finally { live.setPaused(false); ws.close(); }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {

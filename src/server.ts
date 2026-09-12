@@ -45,23 +45,27 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
       throw new Error('vue live en mode input : perception suspendue (spec §5.8)');
     }
   };
+  // Pause (viewer's pause button): every tool that CHANGES the page waits
+  // here until William resumes. Perception is not gated — looking is fine.
+  const gate = async (): Promise<void> => { await liveView?.waitWhilePaused(); };
+  const tell = (kind: string, label: string): void => { liveView?.announce({ kind, label }); };
 
   const tools: Record<string, Tool> = {
-    navigate: { desc: 'Naviguer l\'onglet principal vers une URL absolue et attendre le chargement du DOM. Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => headerLine(await perception.navigate(a.url)) },
+    navigate: { desc: 'Naviguer l\'onglet principal vers une URL absolue et attendre le chargement du DOM. Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => { await gate(); tell('navigate', `navigate ${a.url}`); return headerLine(await perception.navigate(a.url)); } },
     state: { desc: 'Renvoyer l\'entete [state] courant de l\'onglet principal : url, titre, pret, et si un dialogue natif est ouvert.', shape: {}, run: async () => headerLine(await perception.state()) },
     snapshot: { desc: 'Arbre d\'accessibilite elague de l\'onglet principal, chaque element portant une [ref] stable pour agir par reference. Les grands arbres sont ecrits sur disque (un chemin est renvoye). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
     find: { desc: 'Trouver les elements de l\'onglet principal dont le role/nom correspond a une requete ; renvoie leurs [ref]. Suspendu tant que la vue live est en mode input.', shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
     read: { desc: 'Lire le texte visible (innerText) de l\'onglet principal, tronque a un budget de tokens (texte complet ecrit sur disque). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
     screenshot: { desc: 'Capture JPEG de l\'onglet principal (pleine page en option), ecrite sur disque ; renvoie un chemin + resume. Suspendu tant que la vue live est en mode input.', shape: { fullPage: z.boolean().optional() }, run: async (a) => { refuseInputMode(); return (await perception.screenshot(a)).summary; } },
-    act: { desc: 'Agir sur un element de l\'onglet principal par [ref] : click, hover, type (remplir), ou press (touche). Renvoie l\'entete [state] resultant.', shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
-    fill: { desc: 'Remplir plusieurs champs de l\'onglet principal par [ref] en un appel. Renvoie l\'entete [state] resultant.', shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await action.fill(a.fields); return headerLine(await perception.state()); } },
-    scroll: { desc: 'Faire defiler l\'onglet principal vers le haut ou le bas, d\'un nombre de pixels optionnel.', shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
+    act: { desc: 'Agir sur un element de l\'onglet principal par [ref] : click, hover, type (remplir), ou press (touche). Renvoie l\'entete [state] resultant.', shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await gate(); await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
+    fill: { desc: 'Remplir plusieurs champs de l\'onglet principal par [ref] en un appel. Renvoie l\'entete [state] resultant.', shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await gate(); await action.fill(a.fields); return headerLine(await perception.state()); } },
+    scroll: { desc: 'Faire defiler l\'onglet principal vers le haut ou le bas, d\'un nombre de pixels optionnel.', shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await gate(); await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
     network_requests: { desc: 'Lister les requetes reseau capturees de l\'onglet principal (url, statut, type), filtre par sous-chaine optionnel. Sans les corps.', shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
     fetch_with_session: { desc: 'Recuperer une URL avec les cookies de la session du navigateur (contexte de l\'onglet principal) ; le corps est ecrit sur disque, un chemin + resume est renvoye.', shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
     tabs_list: { desc: `Lister les onglets ouverts (id, url, titre, lequel est actif). ${PRIMARY_TAB_NOTE}`, shape: {}, run: async () => tabsLines(await tabs.list()) },
-    tabs_open: { desc: `Ouvrir un nouvel onglet a une URL et le mettre au premier plan ; renvoie son id. ${PRIMARY_TAB_NOTE}`, shape: { url: z.string() }, run: async (a) => `ouvert onglet ${await tabs.open(a.url)}` },
-    tabs_close: { desc: 'Fermer un onglet par id (l\'onglet principal ne peut pas etre ferme). Si l\'onglet actif est ferme, le focus revient a l\'onglet principal.', shape: { id: z.number() }, run: async (a) => { await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
-    tabs_select: { desc: `Mettre un onglet au premier plan par id. NE FAIT QUE cela : ${PRIMARY_TAB_NOTE}`, shape: { id: z.number() }, run: async (a) => { await tabs.select(a.id); return headerLine(await perception.state()); } },
+    tabs_open: { desc: `Ouvrir un nouvel onglet a une URL et le mettre au premier plan ; renvoie son id. ${PRIMARY_TAB_NOTE}`, shape: { url: z.string() }, run: async (a) => { await gate(); tell('tab', `ouvre un onglet ${a.url}`); return `ouvert onglet ${await tabs.open(a.url)}`; } },
+    tabs_close: { desc: 'Fermer un onglet par id (l\'onglet principal ne peut pas etre ferme). Si l\'onglet actif est ferme, le focus revient a l\'onglet principal.', shape: { id: z.number() }, run: async (a) => { await gate(); tell('tab', `ferme l'onglet ${a.id}`); await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
+    tabs_select: { desc: `Mettre un onglet au premier plan par id. NE FAIT QUE cela : ${PRIMARY_TAB_NOTE}`, shape: { id: z.number() }, run: async (a) => { await gate(); tell('tab', `affiche l'onglet ${a.id}`); await tabs.select(a.id); return headerLine(await perception.state()); } },
   };
 
   if (liveView) {
@@ -90,9 +94,10 @@ export async function main(): Promise<void> {
   const store = new ArtifactStore(cfg.dataDir);
   const network = new Network(driver, store); network.start();
   const perception = new Perception(driver, store, cfg.readBudgetChars);
-  const action = new Action(driver, (ref) => perception.resolveRefNode(ref));
-
   let liveView: LiveView | undefined;
+  // Late-bound: liveView is created just below; the observer reads it at call time.
+  const action = new Action(driver, (ref) => perception.resolveRefNode(ref), (ev) => liveView?.announce({ kind: ev.verb, label: ev.label, x: ev.x, y: ev.y }));
+
   if (cfg.secret) {
     try {
       liveView = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality });
