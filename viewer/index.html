@@ -31,27 +31,48 @@
     --bar: 56px;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--warm-950); color: var(--warm-25);
+  html, body { margin: 0; height: 100%; color: var(--warm-25);
     font: 500 14px/1.4 var(--font-sans); -webkit-font-smoothing: antialiased; }
+  /* Fond epure : noir chaud, une lueur terracotta a peine visible sous le
+     notch, un leger fondu vers le bas. */
+  body { background:
+      radial-gradient(56% 34% at 50% 0%, rgba(218, 119, 86, 0.13) 0%, rgba(218, 119, 86, 0) 72%),
+      linear-gradient(180deg, #14110E 0%, var(--warm-950) 60%, #0B0908 100%);
+    background-attachment: fixed; }
 
   /* Barre : etiquette mono a gauche, action en pilule a droite. */
-  #bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; min-height: var(--bar); padding: 8px 16px;
-    background: var(--warm-900); border-bottom: 1px solid var(--border-inverse); position: sticky; top: 0; z-index: 2; }
+  /* Le notch : une capsule accrochee au bord superieur, coins arrondis vers
+     le bas, flottante au-dessus de l'ecran. Point | SCRY | toggle. */
+  #bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 2;
+    display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 18px;
+    min-height: var(--bar); padding: 10px 14px 12px 20px;
+    background: rgba(26, 23, 20, 0.92); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border: 1px solid var(--border-inverse); border-top: 0; border-radius: 0 0 26px 26px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(255, 255, 255, 0.04); }
   #left, #right { display: flex; align-items: center; gap: 10px; min-width: 0; }
   #right { justify-content: flex-end; }
+  /* Etat sous le notch : reconnexion, lien expire. Vide sinon. */
+  #hint { position: fixed; top: calc(var(--bar) + 10px); left: 0; right: 0; z-index: 2; text-align: center; pointer-events: none;
+    font: 500 11px/1 var(--font-mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--warm-400);
+    transition: opacity var(--dur) var(--ease-out); }
+  #hint:empty { opacity: 0; }
 
   /* Le mot-symbole : SCRY, capitales italiques serrees, creme sur noir chaud. */
   #wordmark { font: italic 800 20px/1 var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--warm-25); text-align: center; padding: 0 12px; user-select: none; -webkit-user-select: none; }
-  /* Le point : discret. Blanc et fixe tant que le lien vit, un leger
-     battement par image recue, gris hors ligne. */
-  #dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warm-700); flex: 0 0 auto; opacity: 0.7;
-    transition: background var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
-  #dot.on { background: var(--warm-25); opacity: 0.85; }
-  #dot.on.blip { opacity: 1; transform: scale(1.25); }
+    color: var(--warm-25); text-align: center; padding: 0; user-select: none; -webkit-user-select: none; }
+  /* La marque : un orbe. Anneau creme, reflet, pupille terracotta. La
+     pupille est l'indicateur live : eteinte hors ligne, un leger battement
+     par image recue. */
+  #mark { display: block; flex: 0 0 auto; overflow: visible; }
+  #mark .ring { fill: none; stroke: var(--warm-25); stroke-width: 1.9; opacity: 0.92;
+    transition: opacity var(--dur) var(--ease-out); }
+  #mark .sheen { fill: none; stroke: var(--warm-25); stroke-width: 1.4; stroke-linecap: round; opacity: 0.45; }
+  #dot { fill: var(--warm-700); transform-box: fill-box; transform-origin: center;
+    transition: fill var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out); }
+  #dot.on { fill: var(--terra-500); }
+  #dot.on.blip { transform: scale(1.28); filter: drop-shadow(0 0 4px rgba(218, 119, 86, 0.9)); }
+  body.off #mark .ring { opacity: 0.45; }
   @media (prefers-reduced-motion: reduce) { #dot.on.blip { transform: none; } }
-  #hint { color: var(--warm-400); font-size: 13px; text-align: right; min-width: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Le toggle : deux segments dans une piste, un curseur qui glisse.
      Auto = Claude pilote (creme). Manuel = William a le controle (terracotta). */
@@ -71,21 +92,62 @@
   #mode.off { opacity: 0.45; }
   #mode.off button { cursor: default; }
 
-  /* Scene : l'ecran distant, coins doux, ombre chaude ; liseret terracotta
-     quand William a le controle. */
-  #stage { display: flex; justify-content: center; align-items: flex-start; padding: 12px 16px 16px; height: calc(100% - var(--bar)); }
-  #screen { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; background: var(--warm-900);
-    border-radius: var(--r-md); box-shadow: var(--shadow-md); outline: 2px solid transparent; outline-offset: 3px;
-    touch-action: none; -webkit-user-select: none; user-select: none;
-    transition: outline-color var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
-  body.input #screen { outline-color: var(--terra-500); cursor: crosshair; }
-  body.off #screen { opacity: 0.55; }
+  /* Scene : l'ecran distant dans un cadre — bandeau (url, resolution,
+     cadence, capture, plein ecran), repères de visee aux coins, liseret
+     terracotta quand William a le controle. */
+  #stage { display: flex; justify-content: center; align-items: flex-start; height: 100%;
+    padding: calc(var(--bar) + 24px) 24px 24px; }
+  #lens { position: relative; display: inline-block; max-width: 100%; }
+  #frame { display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
+    background: rgba(26, 23, 20, 0.85); border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.35);
+    transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out); }
+  body.input #frame { border-color: var(--terra-500); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--terra-500), var(--shadow-terra-sm); }
+  #chrome { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; height: 36px; padding: 0 8px 0 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07); font: 500 11px/1 var(--font-mono); color: var(--warm-400); }
+  #url { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #url .lock { width: 10px; height: 10px; flex: 0 0 auto; opacity: 0.7; }
+  #url span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.02em; color: var(--warm-200); }
+  #meta { display: flex; align-items: center; gap: 4px; }
+  #meta .stat { padding: 0 8px; letter-spacing: 0.08em; white-space: nowrap; }
+  #meta .stat b { font-weight: 600; color: var(--warm-200); }
+  #meta .sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.1); }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px;
+    border: 0; background: transparent; color: var(--warm-400); cursor: pointer; touch-action: manipulation;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-spring); }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.07); color: var(--warm-25); }
+  .icon-btn:active { transform: scale(0.92); }
+  .icon-btn:focus-visible { outline: none; box-shadow: var(--ring-focus-inverse); }
+  .icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #screen { display: block; max-width: calc(100vw - 48px); max-height: calc(100vh - var(--bar) - 48px - 36px); width: auto; height: auto;
+    background: var(--warm-900); touch-action: none; -webkit-user-select: none; user-select: none;
+    transition: opacity var(--dur) var(--ease-out); }
+  body.input #screen { cursor: crosshair; }
+  body.off #screen { opacity: 0.5; }
+  /* Repères de visee : quatre coins, hors du cadre. */
+  .tick { position: absolute; width: 14px; height: 14px; pointer-events: none; opacity: 0.35;
+    border-color: var(--warm-25); border-style: solid; border-width: 0;
+    transition: border-color var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
+  .tick.tl { top: -11px; left: -11px; border-top-width: 1.5px; border-left-width: 1.5px; border-top-left-radius: 4px; }
+  .tick.tr { top: -11px; right: -11px; border-top-width: 1.5px; border-right-width: 1.5px; border-top-right-radius: 4px; }
+  .tick.bl { bottom: -11px; left: -11px; border-bottom-width: 1.5px; border-left-width: 1.5px; border-bottom-left-radius: 4px; }
+  .tick.br { bottom: -11px; right: -11px; border-bottom-width: 1.5px; border-right-width: 1.5px; border-bottom-right-radius: 4px; }
+  body.input .tick { border-color: var(--terra-400); opacity: 0.9; }
+  /* Plein ecran : le cadre prend tout, sans chrome ni notch. */
+  body.fs #bar, body.fs #hint, body.fs .tick { display: none; }
+  body.fs #stage { padding: 0; }
+  body.fs #frame { border-radius: 0; border: 0; box-shadow: none; }
+  body.fs #chrome { display: none; }
+  body.fs #screen { max-width: 100vw; max-height: 100vh; }
   #kb { position: absolute; opacity: 0; width: 1px; height: 1px; border: 0; padding: 0; }
 
   @media (max-width: 520px) {
-    #hint { display: none; }
-    #bar { gap: 8px; padding: 8px 12px; }
-    #wordmark { font-size: 17px; padding: 0 6px; }
+    #bar { gap: 14px; padding: 8px 10px 10px 16px; border-radius: 0 0 20px 20px; }
+    #wordmark { font-size: 17px; }
+    #stage { padding: calc(var(--bar) + 18px) 12px 12px; }
+    #screen { max-width: calc(100vw - 24px); max-height: calc(100vh - var(--bar) - 30px - 36px); }
+    #meta .stat.res { display: none; }
+    .tick { display: none; }
     #mode { min-height: 36px; }
     #mode button { min-width: 64px; padding: 0 10px; font-size: 12px; }
     #stage { padding: 8px; }
@@ -95,11 +157,14 @@
 <body>
   <div id="bar">
     <div id="left">
-      <span id="dot"></span>
+      <svg id="mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+        <circle class="ring" cx="12" cy="12" r="9.25"/>
+        <path class="sheen" d="M6.6 8.4a6.6 6.6 0 0 1 4.2-2.9"/>
+        <circle id="dot" cx="12" cy="12" r="3.1"/>
+      </svg>
     </div>
     <div id="wordmark">Scry</div>
     <div id="right">
-      <span id="hint"></span>
       <div id="mode" class="read off" role="radiogroup" aria-label="mode">
         <button id="seg-auto" type="button" role="radio" aria-checked="true" disabled>Auto</button>
         <button id="seg-manual" type="button" role="radio" aria-checked="false" disabled>Manuel</button>
@@ -107,7 +172,33 @@
     </div>
     <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="capture clavier">
   </div>
-  <div id="stage"><img id="screen" alt="vue live"></div>
+  <div id="hint"></div>
+  <div id="stage">
+    <div id="lens">
+      <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+      <div id="frame">
+        <div id="chrome">
+          <div id="url">
+            <svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor"/><path d="M4 5V3.5a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+            <span id="urltext">—</span>
+          </div>
+          <div id="meta">
+            <span class="stat res"><b id="res">—</b></span>
+            <span class="sep"></span>
+            <span class="stat"><b id="fps">0</b> i/s</span>
+            <span class="sep"></span>
+            <button class="icon-btn" id="snap" type="button" title="Capturer l'image" aria-label="Capturer l'image">
+              <svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.4-2h5.2L16 6h1.5A2.5 2.5 0 0 1 20 8.5V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.2"/></svg>
+            </button>
+            <button class="icon-btn" id="fs" type="button" title="Plein écran" aria-label="Plein écran">
+              <svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>
+            </button>
+          </div>
+        </div>
+        <img id="screen" alt="vue live">
+      </div>
+    </div>
+  </div>
 <script>
 (function () {
   // Token from the fragment only (never the query string), then scrub it from
@@ -141,7 +232,8 @@
     var dpr = window.devicePixelRatio || 1;
     var barH = bar.offsetHeight || 41;
     document.documentElement.style.setProperty('--bar', barH + 'px');
-    var w = Math.max(1, window.innerWidth - 16), h = Math.max(1, window.innerHeight - barH - 16);
+    var fs = document.body.classList.contains('fs');
+    var w = Math.max(1, window.innerWidth - (fs ? 0 : 48)), h = Math.max(1, window.innerHeight - (fs ? 0 : barH + 48 + 36));
     return { w: Math.round(w * dpr), h: Math.round(h * dpr) };
   }
   var vs = viewSize();
@@ -180,6 +272,9 @@
         if (msg.h) frameH = msg.h;
         img.src = 'data:image/jpeg;base64,' + msg.data;
         blip();
+        frames++;
+        if (typeof msg.url === 'string' && msg.url !== lastUrl) { lastUrl = msg.url; urlText.textContent = prettyUrl(msg.url); }
+        if (frameW && frameH) resEl.textContent = frameW + ' × ' + frameH;
       }
     };
   }
@@ -198,6 +293,32 @@
       if (s.w !== vs.w || s.h !== vs.h) { vs = s; send({ t: 'view', w: s.w, h: s.h }); }
     }, 300);
   });
+
+  // Bandeau : url, resolution, cadence (images recues par seconde).
+  var urlText = document.getElementById('urltext'), resEl = document.getElementById('res'), fpsEl = document.getElementById('fps');
+  var frames = 0, lastUrl = '';
+  function prettyUrl(u) { try { var x = new URL(u); return x.host + (x.pathname === '/' ? '' : x.pathname) + x.search; } catch (e) { return u; } }
+  setInterval(function () { fpsEl.textContent = String(frames); frames = 0; }, 1000);
+
+  // Capturer : telecharge l'image affichee (cote client, rien ne transite).
+  document.getElementById('snap').addEventListener('click', function () {
+    if (!img.src || img.src.indexOf('data:image/jpeg') !== 0) return;
+    var a = document.createElement('a');
+    a.href = img.src; a.download = 'scry-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  // Plein ecran : le cadre seul, sans notch ; le flux est redemande a la
+  // nouvelle taille via le resize qui suit.
+  var fsBtn = document.getElementById('fs');
+  function setFs(on) { document.body.classList.toggle('fs', on); window.dispatchEvent(new Event('resize')); }
+  fsBtn.addEventListener('click', function () {
+    var el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) { el.requestFullscreen().catch(function () { setFs(true); }); }
+    else if (document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen(); }
+    else { setFs(!document.body.classList.contains('fs')); }
+  });
+  document.addEventListener('fullscreenchange', function () { setFs(!!document.fullscreenElement); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('fs') && !document.fullscreenElement) setFs(false); });
 
   // The dot beats once per received frame (rate-limited so a 30 fps burst
   // reads as a lively flutter, not a strobe).
@@ -218,7 +339,7 @@
     segAuto.setAttribute('aria-checked', m !== 'input' ? 'true' : 'false');
     segManual.setAttribute('aria-checked', m === 'input' ? 'true' : 'false');
     document.body.classList.toggle('input', m === 'input');
-    hint.textContent = m === 'input' ? 'vous avez le contrôle' : 'Claude pilote';
+    hint.textContent = '';
   }
   setMode('read');
 

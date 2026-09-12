@@ -275,7 +275,7 @@ export class LiveView {
         // page maps a click back to CDP coordinates), and the current mode.
         // Server->client only — no input is ever echoed here.
         if (ws.readyState === ws.OPEN && ws.bufferedAmount <= 1024 * 1024) {
-          ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode }));
+          ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode, url: this.driver.page().url() }));
         }
         try {
           await cdp!.send('Page.screencastFrameAck', { sessionId: f.sessionId });

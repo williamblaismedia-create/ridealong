@@ -191,6 +191,7 @@ describe('LiveView (integration)', () => {
 
     expect(typeof frame.data).toBe('string');
     expect(frame.data.length).toBeGreaterThan(0);
+    expect(typeof frame.url).toBe('string'); // the viewer's chrome strip shows where the page is
     ws.close();
   });
 
