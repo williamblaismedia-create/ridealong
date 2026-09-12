@@ -15,6 +15,12 @@ export interface Config {
    * Optional, no default: unset falls back to 127.0.0.1:<port> (loopback).
    */
   livePublicUrl: string | undefined;
+  /**
+   * SCRY_LIVE_QUALITY. JPEG quality (1-100) of the live-view screencast
+   * frames. Default 85. Frame SIZE is not configured here: it follows each
+   * viewer's own screen (see LiveView / screencastParams).
+   */
+  liveQuality: number;
 }
 
 function expandHome(p: string): string {
@@ -50,5 +56,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     secret: realSecret(env.SCRY_LIVE_SECRET),
     liveViewPort: intOr(env.SCRY_LIVE_PORT, 9400),
     livePublicUrl: env.SCRY_LIVE_PUBLIC_URL,
+    liveQuality: Math.min(100, Math.max(1, intOr(env.SCRY_LIVE_QUALITY, 85))),
   };
 }

@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Config + secret from outside git / outside ~/projets. `set -a` exports
 # every assignment so the node process inherits them (SCRY_CDP_URL,
-# SCRY_DATA_DIR, SCRY_LIVE_PORT, SCRY_LIVE_SECRET, SCRY_LIVE_PUBLIC_URL).
+# SCRY_DATA_DIR, SCRY_LIVE_PORT, SCRY_LIVE_SECRET, SCRY_LIVE_PUBLIC_URL, SCRY_LIVE_QUALITY).
 ENV_FILE="${SCRY_ENV_FILE:-${HOME}/scry-donnees/scry.env}"
 if [ -f "${ENV_FILE}" ]; then
   set -a

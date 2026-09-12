@@ -5,7 +5,40 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startBrowser } from './helpers.js';
 import { Driver } from '../src/driver.js';
-import { mintToken, verifyToken, LiveView } from '../src/live-view.js';
+import { mintToken, verifyToken, LiveView, screencastParams } from '../src/live-view.js';
+
+/** Width/height of a baseline or progressive JPEG, read from its SOF marker. */
+function jpegSize(buf: Buffer): { w: number; h: number } {
+  let i = 2;
+  while (i < buf.length) {
+    if (buf[i] !== 0xff) { i++; continue; }
+    const marker = buf[i + 1];
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + buf.readUInt16BE(i + 2);
+  }
+  throw new Error('no SOF marker');
+}
+
+describe('screencastParams (pure)', () => {
+  it('caps the frame to the viewer\'s reported physical pixels', () => {
+    expect(screencastParams({ w: '750', h: '1334' })).toEqual({ format: 'jpeg', quality: 85, maxWidth: 750, maxHeight: 1334 });
+  });
+  it('falls back to a desktop default on a missing or garbage hint', () => {
+    expect(screencastParams({})).toMatchObject({ maxWidth: 1920, maxHeight: 1200 });
+    expect(screencastParams({ w: 'abc', h: null })).toMatchObject({ maxWidth: 1920, maxHeight: 1200 });
+  });
+  it('clamps absurd sizes and rounds fractions', () => {
+    expect(screencastParams({ w: 10, h: 99999 })).toMatchObject({ maxWidth: 320, maxHeight: 4096 });
+    expect(screencastParams({ w: 1000.6, h: 500.4 })).toMatchObject({ maxWidth: 1001, maxHeight: 500 });
+  });
+  it('honours a configured quality and clamps it to 1-100', () => {
+    expect(screencastParams({}, 100).quality).toBe(100);
+    expect(screencastParams({}, 250).quality).toBe(100);
+    expect(screencastParams({}, NaN).quality).toBe(85);
+  });
+});
 
 describe('mintToken / verifyToken (pure)', () => {
   const secret = 'test-secret';
@@ -159,6 +192,102 @@ describe('LiveView (integration)', () => {
     expect(typeof frame.data).toBe('string');
     expect(frame.data.length).toBeGreaterThan(0);
     ws.close();
+  });
+
+  // Wait for the next screencast frame on `ws`, poking the DOM so a static
+  // page still produces one (same rationale as above).
+  async function nextFrame(ws: WebSocket, timeoutMs = 4000): Promise<{ w: number; h: number }> {
+    return new Promise((resolve, reject) => {
+      const poke = setInterval(() => {
+        void driver.page().evaluate(() => { document.title = 'poke-' + Math.random(); }).catch(() => {});
+      }, 100);
+      const timer = setTimeout(() => { clearInterval(poke); reject(new Error('timeout waiting for frame')); }, timeoutMs);
+      const onMsg = (data: WebSocket.RawData) => {
+        let m: any; try { m = JSON.parse(data.toString()); } catch { return; }
+        if (!m || typeof m.data !== 'string') return;
+        clearInterval(poke); clearTimeout(timer); ws.off('message', onMsg);
+        resolve(jpegSize(Buffer.from(m.data, 'base64')));
+      };
+      ws.on('message', onMsg);
+    });
+  }
+
+  it('sizes the frames to the viewer\'s screen: small hint -> small JPEG, big hint -> full viewport', async () => {
+    // A phone-sized viewer (physical px) gets a frame no wider than it asked for.
+    const small = new WebSocket(wsUrlFor(PORT) + '&w=640&h=400');
+    await new Promise<void>((resolve, reject) => { small.on('open', () => resolve()); small.on('error', reject); });
+    const s = await nextFrame(small);
+    expect(s.w).toBeLessThanOrEqual(640);
+    expect(s.h).toBeLessThanOrEqual(400);
+    small.close();
+
+    // A big desktop viewer gets the page at its real viewport width (1440),
+    // i.e. no more forced 1280 downscale.
+    const big = new WebSocket(wsUrlFor(PORT) + '&w=3000&h=2000');
+    await new Promise<void>((resolve, reject) => { big.on('open', () => resolve()); big.on('error', reject); });
+    const b = await nextFrame(big);
+    expect(b.w).toBe(1440);
+    expect(b.h).toBe(900);
+    big.close();
+  });
+
+  it('restarts the screencast at a new cap on a {t:"view"} message (rotation/resize), in read mode', async () => {
+    const ws = new WebSocket(wsUrlFor(PORT) + '&w=3000&h=2000');
+    await new Promise<void>((resolve, reject) => { ws.on('open', () => resolve()); ws.on('error', reject); });
+    expect((await nextFrame(ws)).w).toBe(1440);
+    expect(live.getMode()).toBe('read'); // accepted regardless of mode: it carries no input
+    ws.send(JSON.stringify({ t: 'view', w: 480, h: 300 }));
+    // The first frame(s) after the message may still be in flight at the old
+    // size; wait until one arrives at the new cap.
+    const deadline = Date.now() + 5000;
+    let got = { w: 0, h: 0 };
+    while (Date.now() < deadline) {
+      got = await nextFrame(ws);
+      if (got.w <= 480) break;
+    }
+    expect(got.w).toBeLessThanOrEqual(480);
+    expect(got.h).toBeLessThanOrEqual(300);
+    ws.close();
+  });
+
+  // Cloudflare (the tunnel the phone comes through) closes a websocket that
+  // carries no traffic for ~100s (measured: 1006 at 125s). A static page
+  // emits no screencast frame, so the server must keep the link warm with
+  // protocol pings on its own.
+  it('sends websocket pings on its own so an idle tunnel link stays up', async () => {
+    const pinger = new LiveView(driver, { secret, pingMs: 100 });
+    await pinger.start(PORT + 1);
+    try {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT + 1}/?token=${mintToken(secret, 60)}`);
+      const gotPing = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no ping within 3s')), 3000);
+        ws.on('ping', () => { clearTimeout(timer); resolve(); });
+        ws.on('error', reject);
+      });
+      await gotPing;
+      ws.close();
+    } finally {
+      await pinger.stop();
+    }
+  });
+
+  // The viewer page must come back by itself after a drop (tunnel idle cut,
+  // phone screen lock, MCP server restart), as long as its token is valid.
+  it('viewer page reconnects on its own after the server goes away and comes back', async () => {
+    const lv = new LiveView(driver, { secret });
+    const { url } = await lv.start(PORT + 2);
+    const viewer = await driver.context().newPage();
+    try {
+      await viewer.goto(url(300));
+      await viewer.waitForSelector('#dot.on', { timeout: 5000 });
+      await lv.stop();
+      await viewer.waitForSelector('#dot:not(.on)', { timeout: 5000 });
+      await lv.ensureStarted();
+      await viewer.waitForSelector('#dot.on', { timeout: 10000 });
+    } finally {
+      await viewer.close().catch(() => {});
+      await lv.stop();
+    }
   });
 
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {

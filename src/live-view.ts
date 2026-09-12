@@ -38,6 +38,30 @@ export function verifyToken(secret: string, token: string): boolean {
   }
 }
 
+/** Bounds for a viewer-requested frame size (physical pixels). */
+const MIN_FRAME_PX = 320;
+const MAX_FRAME_PX = 4096;
+const DEFAULT_QUALITY = 85;
+
+/**
+ * Compute the Page.startScreencast parameters for one viewer. The viewer
+ * reports the PHYSICAL pixels it can display (CSS size x devicePixelRatio);
+ * the frame is capped to that, so a phone gets a small stream and a retina
+ * desktop gets everything Chrome can render — each device gets the best
+ * quality it can actually show, and nobody pays for pixels they can't see.
+ * Chrome never upscales past its own viewport, so a huge hint is harmless.
+ * A missing/garbage hint falls back to a generous desktop default.
+ */
+export function screencastParams(hint: { w?: unknown; h?: unknown }, quality = DEFAULT_QUALITY): { format: 'jpeg'; quality: number; maxWidth: number; maxHeight: number } {
+  const dim = (v: unknown, dflt: number): number => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+    if (!Number.isFinite(n)) return dflt;
+    return Math.min(MAX_FRAME_PX, Math.max(MIN_FRAME_PX, Math.round(n)));
+  };
+  const q = Number.isFinite(quality) ? Math.min(100, Math.max(1, Math.round(quality))) : DEFAULT_QUALITY;
+  return { format: 'jpeg', quality: q, maxWidth: dim(hint.w, 1920), maxHeight: dim(hint.h, 1200) };
+}
+
 /**
  * Live view: streams the driven page's screen over a token-gated websocket
  * via CDP's Page.startScreencast (read mode), and — only in input mode —
@@ -62,7 +86,15 @@ export class LiveView {
   // see this and tear itself down instead of leaving an untracked screencast.
   private stopping = false;
 
-  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string }) {}
+  /**
+   * pingMs: interval of the server-side websocket pings that keep an idle
+   * link alive. Cloudflare's proxy drops a websocket that carries no bytes
+   * for ~100s (measured through the tunnel: close 1006 at 125s), and a
+   * static page produces no screencast frame at all — so without pings the
+   * live view "disconnects" every two minutes of William waiting. 30s
+   * leaves a 3x margin; tests shrink it.
+   */
+  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number }) {}
 
   /** Switch between read-only streaming and hand-the-wheel input relay. */
   setMode(mode: 'read' | 'input'): void {
@@ -183,7 +215,8 @@ export class LiveView {
     // ws client could crash the server — terminate the socket instead.
     ws.on('error', () => ws.terminate());
 
-    const token = new URL(req.url ?? '', 'http://x').searchParams.get('token') ?? '';
+    const query = new URL(req.url ?? '', 'http://x').searchParams;
+    const token = query.get('token') ?? '';
     if (!verifyToken(this.opts.secret, token)) {
       ws.close(1008, 'jeton invalide');
       return;
@@ -197,7 +230,15 @@ export class LiveView {
     // ordinary case where the socket closes after everything is set up.
     let cdp: CDPSession | undefined;
     let closedDuringAttach = false;
+    // Keepalive pings (see the constructor note). Protocol-level frames: the
+    // browser answers them itself, the page never sees them, and they carry
+    // no payload — nothing to do with input, so the no-capture invariant is
+    // untouched. Started now so even a slow attach keeps the link warm.
+    const ping = setInterval(() => {
+      if (ws.readyState === ws.OPEN) { try { ws.ping(); } catch { /* dying socket */ } }
+    }, this.opts.pingMs ?? 30_000);
     ws.on('close', async () => {
+      clearInterval(ping);
       closedDuringAttach = true;
       if (cdp) {
         await cdp.send('Page.stopScreencast').catch(() => {});
@@ -233,8 +274,9 @@ export class LiveView {
           // Session may already be tearing down; nothing to do.
         }
       });
-      // m2: cap the frame size (was uncapped: 1440x900 JPEGs at full rate).
-      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 });
+      // Frame size follows the viewer's own screen (physical pixels, passed
+      // as ?w=&h= by the page at connect time); see screencastParams.
+      await cdp.send('Page.startScreencast', screencastParams({ w: query.get('w'), h: query.get('h') }, this.opts.quality));
     } catch {
       // m1: detach the CDP session on the failure path. A disconnect during
       // newCDPSession followed by a startScreencast throw would otherwise leave
@@ -266,11 +308,30 @@ export class LiveView {
     // handler never writes the message anywhere — no array push, no
     // console.log — and the parsed object goes out of scope the instant the
     // handler returns.
+    //
+    // The one message accepted in EITHER mode is `{t:'view', w, h}`: the
+    // viewer's screen size changed (rotation, window resize), so the
+    // screencast is restarted at the new cap. Only the two numbers are read
+    // from it; restarts are serialised and coalesced (a burst of resize
+    // events ends in a single restart at the last size).
+    let restarting: Promise<void> = Promise.resolve();
+    let wanted: { w: unknown; h: unknown } | undefined;
+    const resize = (hint: { w: unknown; h: unknown }) => {
+      wanted = hint;
+      restarting = restarting.then(async () => {
+        if (!wanted || ws.readyState !== ws.OPEN) return;
+        const params = screencastParams(wanted, this.opts.quality);
+        wanted = undefined;
+        await cdp!.send('Page.stopScreencast').catch(() => {});
+        await cdp!.send('Page.startScreencast', params).catch(() => {});
+      });
+    };
     ws.on('message', async (raw) => {
-      if (this.mode !== 'input') return; // read mode: input is ignored entirely
       try {
         const msg = JSON.parse(raw.toString());
         const { t, ...rest } = msg;
+        if (t === 'view') { resize({ w: rest.w, h: rest.h }); return; }
+        if (this.mode !== 'input') return; // read mode: input is ignored entirely
         if (t === 'mouse') await cdp!.send('Input.dispatchMouseEvent', rest);
         else if (t === 'key') await cdp!.send('Input.dispatchKeyEvent', rest);
       } catch {
@@ -365,8 +426,9 @@ const VIEWER_HTML = `<!doctype html>
   #mode.read { color: #7fd1ff; }
   #mode.input { color: #ffcf5c; }
   #hint { color: #8a939b; margin-left: auto; }
-  #stage { display: flex; justify-content: center; padding: 8px; }
-  #screen { display: block; max-width: 100%; height: auto; background: #000;
+  #stage { display: flex; justify-content: center; align-items: flex-start; padding: 8px;
+    height: calc(100% - var(--bar, 41px)); }
+  #screen { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; background: #000;
     touch-action: none; border-radius: 6px; -webkit-user-select: none; user-select: none; }
   #kb { position: absolute; opacity: 0; width: 1px; height: 1px; border: 0; padding: 0; }
 </style>
@@ -393,22 +455,68 @@ const VIEWER_HTML = `<!doctype html>
   var kb = document.getElementById('kb');
   var frameW = 0, frameH = 0, mode = 'read';
 
-  var scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  var ws = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token));
+  // Physical pixels this device can show for the frame (stage size x DPR):
+  // the server caps the screencast to exactly that, so a retina desktop
+  // gets full-resolution frames and a phone gets a stream its size.
+  var bar = document.getElementById('bar');
+  function viewSize() {
+    var dpr = window.devicePixelRatio || 1;
+    var barH = bar.offsetHeight || 41;
+    document.documentElement.style.setProperty('--bar', barH + 'px');
+    var w = Math.max(1, window.innerWidth - 16), h = Math.max(1, window.innerHeight - barH - 16);
+    return { w: Math.round(w * dpr), h: Math.round(h * dpr) };
+  }
+  var vs = viewSize();
 
-  ws.onopen = function () { dot.classList.add('on'); };
-  ws.onclose = function () { dot.classList.remove('on'); hint.textContent = 'deconnecte'; };
-  ws.onerror = function () { /* no payload logged */ };
-  ws.onmessage = function (ev) {
-    var msg; try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch (e) { return; }
-    if (!msg) return;
-    if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
-    if (typeof msg.data === 'string') {
-      if (msg.w) frameW = msg.w;
-      if (msg.h) frameH = msg.h;
-      img.src = 'data:image/jpeg;base64,' + msg.data;
-    }
-  };
+  var scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  var ws = null, retryTimer = 0, retryMs = 1000, gaveUp = false;
+
+  // The link drops for ordinary reasons — the phone locks, Safari goes to
+  // the background, the tunnel hiccups, the MCP server restarts. The token
+  // stays valid through all of that, so reconnect on our own with a short
+  // backoff, keeping the last frame on screen. Only an invalid/expired token
+  // (close 1008) is final: William needs a fresh link from live_start.
+  function connect() {
+    clearTimeout(retryTimer);
+    if (gaveUp) return;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    var s = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token) + '&w=' + vs.w + '&h=' + vs.h);
+    ws = s;
+    s.onopen = function () { retryMs = 1000; dot.classList.add('on'); hint.textContent = mode === 'input' ? 'vos clics/frappes vont au navigateur' : ''; };
+    s.onerror = function () { /* no payload logged */ };
+    s.onclose = function (ev) {
+      dot.classList.remove('on');
+      if (ev && ev.code === 1008) { gaveUp = true; hint.textContent = 'lien expire — demande un nouveau lien'; return; }
+      hint.textContent = 'reconnexion…';
+      retryTimer = setTimeout(connect, retryMs);
+      retryMs = Math.min(10000, retryMs * 2);
+    };
+    s.onmessage = function (ev) {
+      var msg; try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch (e) { return; }
+      if (!msg) return;
+      if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
+      if (typeof msg.data === 'string') {
+        if (msg.w) frameW = msg.w;
+        if (msg.h) frameH = msg.h;
+        img.src = 'data:image/jpeg;base64,' + msg.data;
+      }
+    };
+  }
+  connect();
+  // Back to the foreground (screen unlock, app switch): don't wait for the
+  // backoff, try right away.
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { retryMs = 1000; connect(); } });
+  window.addEventListener('online', function () { retryMs = 1000; connect(); });
+
+  // Rotation / window resize: ask for a new cap (debounced; server coalesces).
+  var resizeTimer = 0;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      var s = viewSize();
+      if (s.w !== vs.w || s.h !== vs.h) { vs = s; send({ t: 'view', w: s.w, h: s.h }); }
+    }, 300);
+  });
 
   function setMode(m) {
     mode = m;
@@ -418,7 +526,7 @@ const VIEWER_HTML = `<!doctype html>
   }
   setMode('read');
 
-  function send(obj) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+  function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 
   // Map a client point over the <img> to the page CSS-pixel space CDP uses.
   function toPage(cx, cy) {

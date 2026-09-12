@@ -74,6 +74,9 @@ SCRY_DATA_DIR=$HOME/scry-donnees
 SCRY_LIVE_PORT=9400
 SCRY_LIVE_SECRET=CHANGE_ME
 SCRY_LIVE_PUBLIC_URL=https://scry.wautomatisations.com
+# Qualité JPEG du screencast (1-100, défaut 85). La taille des images suit
+# l'écran de l'appareil qui regarde (pixels physiques), rien à régler ici.
+# SCRY_LIVE_QUALITY=85
 ```
 
 Générer le secret une seule fois et remplacer `CHANGE_ME` :
@@ -219,6 +222,32 @@ Depuis une session Claude branchée sur Scry (étape 5) :
 
 Toute la boucle se fait Mac non touché, et le mot de passe ne passe
 jamais par Claude.
+
+## 8. Dépannage — « Scry se déconnecte »
+
+Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
+
+- **La vue live affiche « déconnecté » après ~2 min d'attente.** Cloudflare
+  coupe un websocket sans trafic après ~100 s (mesuré à travers le tunnel :
+  fermeture 1006 à 125 s, alors que la même connexion en local reste
+  ouverte). Une page statique ne produit aucune image, donc le lien mourait
+  pendant que Claude réfléchissait ou que William lisait. Corrigé : le serveur
+  envoie un ping websocket toutes les 30 s, et la page viewer se reconnecte
+  toute seule (backoff 1 s → 10 s, et immédiatement au retour au premier plan
+  du téléphone). Seul un jeton expiré (fermeture 1008) est définitif :
+  redemander un lien avec `live_start`.
+- **Les outils `mcp__scry__*` disparaissent de Claude Code.** Le serveur MCP
+  vit dans une session SSH (`ssh will@w-agent scry-mcp.sh`) ; quand ce lien
+  tombe (Mac en veille, changement de réseau, Tailscale qui reroute), le
+  serveur meurt proprement (EOF stdin) et Claude Code **ne relance pas** un
+  serveur stdio tout seul. Remède : `/mcp` → reconnecter `scry`. Chaque
+  reconnexion relance le serveur, donc la vue live repart aussi (la page
+  viewer se raccroche d'elle-même, même lien).
+- **`live-view indisponible : listen EADDRINUSE 127.0.0.1:9400`** au
+  démarrage : une AUTRE session Claude Code a déjà son serveur scry sur
+  w-agent (une par session, toutes sur le même Chrome et le même port). La
+  seconde session garde perception/action mais n'a pas les outils `live_*`.
+  Une seule session à la fois doit utiliser la vue live.
 
 ## Sécurité
 
