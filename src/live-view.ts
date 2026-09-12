@@ -41,6 +41,14 @@ export function verifyToken(secret: string, token: string): boolean {
   }
 }
 
+/**
+ * Control clients (a second scry server on the same Chrome, see
+ * live-view-remote.ts) authenticate with a DIFFERENT token flavour, keyed
+ * on `${secret}:control`: a viewer link can never act as a control client
+ * and vice versa.
+ */
+export function controlSecret(secret: string): string { return `${secret}:control`; }
+
 /** Bounds for a viewer-requested frame size (physical pixels). */
 const MIN_FRAME_PX = 320;
 const MAX_FRAME_PX = 4096;
@@ -79,11 +87,26 @@ export function screencastParams(hint: { w?: unknown; h?: unknown }, quality = D
  * that accumulates keystrokes. Keep it that way: any change that makes a
  * message outlive its handler call breaks this guarantee.
  */
-export class LiveView {
+/** What server.ts needs from a live view — implemented by LiveView (owner) and RemoteLiveView (follower). */
+export interface LiveViewLike {
+  ensureStarted(): Promise<void>;
+  url(ttlSec?: number): string;
+  setMode(mode: 'read' | 'input'): void;
+  getMode(): 'read' | 'input';
+  announce(ev: { kind: string; label: string; x?: number; y?: number }): void;
+  isPaused(): boolean;
+  waitWhilePaused(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export class LiveView implements LiveViewLike {
   private server: WebSocketServer | undefined;
   private httpServer: Server | undefined;
   private port = 0;
   private sessions = new Map<WebSocket, CDPSession>();
+  // Control clients: no screencast, they get mode/pause pushes and may set
+  // mode, pause, and announce actions (a follower scry server).
+  private controls = new Set<WebSocket>();
   private mode: 'read' | 'input' = 'read';
   // Set for the duration of stop(): an attach that finishes after clear() must
   // see this and tear itself down instead of leaving an untracked screencast.
@@ -116,12 +139,7 @@ export class LiveView {
     // without this the phone would stay on 'read' and drop William's taps —
     // exactly the case hand-the-wheel exists for (N1). We send only the mode
     // string; no keystroke, no token — the no-capture invariant is untouched.
-    const payload = JSON.stringify({ mode });
-    for (const ws of this.sessions.keys()) {
-      if (ws.readyState === ws.OPEN) {
-        try { ws.send(payload); } catch { /* a dead socket is cleaned up elsewhere */ }
-      }
-    }
+    this.broadcast({ mode });
   }
 
   private async tabList(): Promise<Array<{ id: number; url: string; title: string; primary: boolean }>> {
@@ -166,7 +184,7 @@ export class LiveView {
   /** Send one JSON message to every attached viewer (best-effort). */
   private broadcast(obj: unknown): void {
     const payload = JSON.stringify(obj);
-    for (const ws of this.sessions.keys()) {
+    for (const ws of [...this.sessions.keys(), ...this.controls]) {
       if (ws.readyState === ws.OPEN) { try { ws.send(payload); } catch { /* cleaned up elsewhere */ } }
     }
   }
@@ -306,6 +324,12 @@ export class LiveView {
     ws.on('error', () => ws.terminate());
 
     const query = new URL(req.url ?? '', 'http://x').searchParams;
+    const control = query.get('control');
+    if (control !== null) {
+      if (!verifyToken(controlSecret(this.opts.secret), control)) { ws.close(1008, 'jeton de controle invalide'); return; }
+      this.handleControl(ws);
+      return;
+    }
     const token = query.get('token') ?? '';
     if (!verifyToken(this.opts.secret, token)) {
       ws.close(1008, 'jeton invalide');
@@ -441,6 +465,26 @@ export class LiveView {
     });
   }
 
+  /**
+   * A follower scry server. Receives every push viewers get (mode, paused,
+   * action, tabs) minus frames; may set mode, pause, and announce. Its
+   * messages carry no input and are not retained.
+   */
+  private handleControl(ws: WebSocket): void {
+    this.controls.add(ws);
+    ws.on('close', () => { this.controls.delete(ws); });
+    try { ws.send(JSON.stringify({ mode: this.mode, paused: this.paused })); } catch { /* dead socket */ }
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        const { t, ...rest } = msg;
+        if (t === 'mode') { if (rest.mode === 'read' || rest.mode === 'input') this.setMode(rest.mode); }
+        else if (t === 'pause') this.setPaused(rest.on === true);
+        else if (t === 'announce' && typeof rest.label === 'string') this.announce({ kind: String(rest.kind ?? 'action'), label: rest.label, x: rest.x, y: rest.y });
+      } catch { /* malformed: drop */ }
+    });
+  }
+
   url(ttlSec?: number): string {
     if (!this.server) throw new Error('vue live non demarree');
     // TTL bounds (m4): default 900s — a Google passkey/2FA login can exceed
@@ -483,6 +527,9 @@ export class LiveView {
     this.sessions.clear();
     this.syncTabsPolling();
     this.setPaused(false); // never leave a tool call hanging on a gone viewer
+
+    for (const c of this.controls) c.terminate();
+    this.controls.clear();
 
     // M5: terminate any client that passed the token check but isn't in
     // `sessions` yet (still mid-attach), or wss.close() below waits on it.

@@ -9,7 +9,8 @@ import { Perception, type StateHeader } from './perception.js';
 import { Action } from './action.js';
 import { Network } from './network.js';
 import { Tabs, type TabInfo } from './tabs.js';
-import { LiveView } from './live-view.js';
+import { LiveView, type LiveViewLike } from './live-view.js';
+import { RemoteLiveView } from './live-view-remote.js';
 
 function headerLine(s: StateHeader): string {
   return `[state] url=${s.url} title=${JSON.stringify(s.title)} ready=${s.ready} dialog=${s.dialogOpen}`;
@@ -29,7 +30,7 @@ interface Tool { desc: string; shape: Record<string, z.ZodTypeAny>; run: (args: 
 const PRIMARY_TAB_NOTE =
   'Perception, action et la vue live ciblent TOUJOURS l\'onglet principal ; tabs_select/tabs_open ne font que changer l\'onglet affiche par Chrome, sans deplacer ou Scry regarde/agit.';
 
-export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveView }) {
+export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveViewLike }) {
   const { perception, action, network, liveView } = deps;
   const tabs = new Tabs(perception.driver);
 
@@ -94,21 +95,30 @@ export async function main(): Promise<void> {
   const store = new ArtifactStore(cfg.dataDir);
   const network = new Network(driver, store); network.start();
   const perception = new Perception(driver, store, cfg.readBudgetChars);
-  let liveView: LiveView | undefined;
+  let liveView: LiveViewLike | undefined;
   // Late-bound: liveView is created just below; the observer reads it at call time.
   const action = new Action(driver, (ref) => perception.resolveRefNode(ref), (ev) => liveView?.announce({ kind: ev.verb, label: ev.label, x: ev.x, y: ev.y }));
 
   if (cfg.secret) {
     try {
-      liveView = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality });
-      await liveView.start(cfg.liveViewPort);
+      const owner = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality });
+      await owner.start(cfg.liveViewPort);
+      liveView = owner;
     } catch (e) {
-      // A bind failure (stale process, restart race on an always-on host)
-      // must not take the whole MCP server down with it — degrade to a
-      // working core server without the live_* tools instead. Never log
-      // the secret value, only the error.
-      console.error('[scry] live-view indisponible : ' + (e as Error).message);
-      liveView = undefined;
+      // Another scry server (another Claude Code session on the same Chrome)
+      // already owns the live-view port: follow it as a control client so
+      // this session keeps its live_* tools — same links, same screen, one
+      // shared mode/pause. Any other failure degrades to a core server
+      // without live_* tools. Never log the secret value, only the error.
+      if (/EADDRINUSE/.test((e as Error).message)) {
+        const follower = new RemoteLiveView({ secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl });
+        await follower.ensureStarted();
+        liveView = follower;
+        console.error('[scry] vue live deja servie par une autre session : cette session la suit (mode controle).');
+      } else {
+        console.error('[scry] live-view indisponible : ' + (e as Error).message);
+        liveView = undefined;
+      }
     }
   } else {
     console.error('[scry] SCRY_LIVE_SECRET absent : vue live desactivee.');

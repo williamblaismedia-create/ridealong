@@ -259,11 +259,14 @@ Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
   `viewer/index.html` et est relue à chaque requête : après un `git pull`
   sur w-agent, un rechargement de la page suffit, pas besoin de `/mcp`. Seul
   un changement du code serveur (`src/*.ts`) demande le reconnect.
-- **`live-view indisponible : listen EADDRINUSE 127.0.0.1:9400`** au
-  démarrage : une AUTRE session Claude Code a déjà son serveur scry sur
-  w-agent (une par session, toutes sur le même Chrome et le même port). La
-  seconde session garde perception/action mais n'a pas les outils `live_*`.
-  Une seule session à la fois doit utiliser la vue live.
+- **Deux sessions Claude Code en même temps.** Chaque session lance son
+  serveur scry sur w-agent, toutes sur le même Chrome et le même port 9400.
+  Depuis le 2026-09-12, la seconde ne perd plus rien : elle voit
+  `vue live deja servie par une autre session : cette session la suit` et
+  se branche en **client de contrôle** sur la première (jeton distinct
+  dérivé du secret). Ses `live_start` donnent le même lien, le même écran,
+  et `live_mode`, la pause et le curseur de Claude passent par la première.
+  `live_stop` dans la seconde ne fait que la détacher.
 
 ## Sécurité
 
