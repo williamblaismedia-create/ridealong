@@ -341,17 +341,17 @@ describe('LiveView (integration)', () => {
     }
   });
 
-  it('the viewer page has a toggle button that takes and gives back the wheel', async () => {
+  it('the viewer page has an Auto/Manuel toggle that takes and gives back the wheel', async () => {
     const lv = new LiveView(driver, { secret });
     const { url } = await lv.start(PORT + 4);
     const viewer = await driver.context().newPage();
     try {
       await viewer.goto(url(300));
       await viewer.waitForSelector('#dot.on', { timeout: 5000 });
-      await viewer.click('#toggle');
+      await viewer.click('#seg-manual');
       await viewer.waitForSelector('#mode.input', { timeout: 3000 });
       expect(lv.getMode()).toBe('input');
-      await viewer.click('#toggle');
+      await viewer.click('#seg-auto');
       await viewer.waitForSelector('#mode.read', { timeout: 3000 });
       expect(lv.getMode()).toBe('read');
     } finally {
