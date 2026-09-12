@@ -113,9 +113,19 @@ lance en stdio via `scripts/scry-mcp.sh` (qui résout `node`, source
 câblages, dans le fichier de config MCP de Claude Code — modèle complet
 dans `scripts/scry-mcp-client.example.json` :
 
-- **Depuis le Mac ou l'iPhone (SSH)** — le cas « de n'importe où ». Le
-  `-o BatchMode=yes` évite qu'une clé manquante bloque le client MCP sur
-  une invite silencieuse :
+- **Depuis le Mac, via le relais local (recommandé, en place depuis le
+  2026-09-12)** — `scripts/scry-mcp-relay.mjs` tourne sur le Mac, lancé par
+  Claude Code, et porte lui-même le `ssh` vers w-agent. Si le lien tombe, il
+  le relance et rejoue l'initialisation : la session Claude ne voit rien.
+  ```json
+  "scry": {
+    "command": "/opt/homebrew/bin/node",
+    "args": ["/Users/will/Projets/scry/scripts/scry-mcp-relay.mjs"]
+  }
+  ```
+- **Depuis le Mac ou l'iPhone (SSH direct, sans relais)** — le cas « de
+  n'importe où » sans node local. Le `-o BatchMode=yes` évite qu'une clé
+  manquante bloque le client MCP sur une invite silencieuse :
   ```json
   "scry": {
     "command": "ssh",
@@ -237,12 +247,14 @@ Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
   du téléphone). Seul un jeton expiré (fermeture 1008) est définitif :
   redemander un lien avec `live_start`.
 - **Les outils `mcp__scry__*` disparaissent de Claude Code.** Le serveur MCP
-  vit dans une session SSH (`ssh will@w-agent scry-mcp.sh`) ; quand ce lien
-  tombe (Mac en veille, changement de réseau, Tailscale qui reroute), le
-  serveur meurt proprement (EOF stdin) et Claude Code **ne relance pas** un
-  serveur stdio tout seul. Remède : `/mcp` → reconnecter `scry`. Chaque
-  reconnexion relance le serveur, donc la vue live repart aussi (la page
-  viewer se raccroche d'elle-même, même lien).
+  vit dans une session SSH ; quand ce lien tombe (Mac en veille, changement
+  de réseau, Tailscale qui reroute), le serveur meurt proprement (EOF stdin)
+  et Claude Code **ne relance pas** un serveur stdio tout seul. Corrigé le
+  2026-09-12 par le **relais local** `scripts/scry-mcp-relay.mjs` (lancé par
+  Claude Code sur le Mac, voir §5) : il relance `ssh` avec un backoff 1 s →
+  30 s, rejoue l'`initialize` du client vers le nouveau serveur et vide la
+  file des appels en attente. Claude Code ne voit jamais la coupure. Sans le
+  relais, le remède reste `/mcp` → reconnecter `scry`.
 - **Corriger la page viewer sans redémarrer.** La page vit dans
   `viewer/index.html` et est relue à chaque requête : après un `git pull`
   sur w-agent, un rechargement de la page suffit, pas besoin de `/mcp`. Seul

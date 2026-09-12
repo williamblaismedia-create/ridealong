@@ -1,19 +1,33 @@
 {
   "_comment": "Exemple de config client MCP pour brancher Claude Code sur Scry. Le serveur MCP de Scry parle en stdio et est lance PAR la session Claude (jamais un demon). Copier l'entree 'scry' voulue dans le fichier de config MCP de Claude Code, PAS ce fichier tel quel. Aucun secret ici : scry-mcp.sh source ~/scry-donnees/scry.env SUR w-agent. Si node n'est pas trouve, exporter SCRY_NODE cote w-agent.",
-
   "_cas_A_depuis_le_Mac_ou_iPhone_par_SSH": {
+    "_note": "RECOMMANDE : passer par le relais local, qui relance ssh tout seul quand le lien tombe (Mac en veille, reseau) et rejoue l'initialisation — plus de /mcp reconnect. Node local requis.",
     "mcpServers": {
       "scry": {
-        "command": "ssh",
-        "args": ["-o", "BatchMode=yes", "will@w-agent", "~/scry/scripts/scry-mcp.sh"]
+        "command": "/opt/homebrew/bin/node",
+        "args": [
+          "/Users/will/Projets/scry/scripts/scry-mcp-relay.mjs"
+        ]
       }
     }
   },
-
   "_cas_B_session_Claude_Code_qui_tourne_sur_w-agent": {
     "mcpServers": {
       "scry": {
         "command": "/home/will/scry/scripts/scry-mcp.sh"
+      }
+    }
+  },
+  "_cas_A_bis_ssh_direct_sans_relais": {
+    "mcpServers": {
+      "scry": {
+        "command": "ssh",
+        "args": [
+          "-o",
+          "BatchMode=yes",
+          "will@w-agent",
+          "~/scry/scripts/scry-mcp.sh"
+        ]
       }
     }
   }
