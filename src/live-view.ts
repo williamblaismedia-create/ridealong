@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { CDPSession } from 'playwright';
 import type { Driver } from './driver.js';
+import { VideoStream, VIDEO_MIME, type VideoOpts } from './video.js';
 
 /**
  * Mint a token of the form `${exp}.${hmac}` where `exp` is a unix-epoch
@@ -129,7 +130,63 @@ export class LiveView implements LiveViewLike {
    * live view "disconnects" every two minutes of William waiting. 30s
    * leaves a 3x margin; tests shrink it.
    */
-  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number }) {}
+  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number; video?: Partial<VideoOpts> | false }) {}
+
+  // ---- Video path (H.264 fMP4 over the same websocket, see video.ts) ----
+  private video: VideoStream | undefined;
+  private videoViewers = new Set<WebSocket>();
+
+  private videoEnabled(): boolean { return this.opts.video !== false; }
+
+  private ensureVideo(): VideoStream {
+    if (this.video) return this.video;
+    const vp = this.driver.page().viewportSize() ?? { width: 1440, height: 900 };
+    const v = new VideoStream(this.driver, { width: vp.width, height: vp.height, ...(this.opts.video || {}) });
+    v.on('init', (b: Buffer) => this.sendVideo(Buffer.concat([Buffer.from([1]), b])));
+    v.on('segment', (b: Buffer) => this.sendVideo(Buffer.concat([Buffer.from([2]), b])));
+    v.on('exit', (info: { code: number | null; stderr: string }) => {
+      // ffmpeg died (no encoder, GPU busy...): tell viewers so they fall back to JPEG.
+      if (this.videoViewers.size) this.broadcastTo(this.videoViewers, { video: { error: `encodeur termine (code ${info.code}) ${info.stderr.slice(-200)}` } });
+    });
+    v.on('error', () => { /* surfaced via exit */ });
+    this.video = v;
+    return v;
+  }
+
+  private sendVideo(payload: Buffer): void {
+    for (const ws of this.videoViewers) {
+      if (ws.readyState !== ws.OPEN) continue;
+      // Backpressure: a media segment can't be skipped without breaking the
+      // decoder until the next keyframe, so a backed-up viewer (> 4 MB) is
+      // dropped and reconnects (its page falls back / retries).
+      if (ws.bufferedAmount > 4 * 1024 * 1024) { ws.terminate(); continue; }
+      try { ws.send(payload, { binary: true }); } catch { /* cleaned up on close */ }
+    }
+  }
+
+  private broadcastTo(set: Iterable<WebSocket>, obj: unknown): void {
+    const payload = JSON.stringify(obj);
+    for (const ws of set) { if (ws.readyState === ws.OPEN) { try { ws.send(payload); } catch { /* ignore */ } } }
+  }
+
+  private async subscribeVideo(ws: WebSocket): Promise<void> {
+    const v = this.ensureVideo();
+    this.videoViewers.add(ws);
+    const vp = this.driver.page().viewportSize() ?? { width: 1440, height: 900 };
+    try { ws.send(JSON.stringify({ video: { w: vp.width, h: vp.height, mime: VIDEO_MIME }, mode: this.mode })); } catch { /* dead */ }
+    if (v.isRunning) v.restart(); // fresh init + keyframe for the newcomer (and everyone)
+    else {
+      try { await v.start(); } catch (e) {
+        this.videoViewers.delete(ws);
+        try { ws.send(JSON.stringify({ video: { error: (e as Error).message } })); } catch { /* dead */ }
+      }
+    }
+  }
+
+  private async unsubscribeVideo(ws: WebSocket): Promise<void> {
+    if (!this.videoViewers.delete(ws)) return;
+    if (this.videoViewers.size === 0 && this.video) { const v = this.video; this.video = undefined; await v.stop(); }
+  }
 
   /** Switch between read-only streaming and hand-the-wheel input relay. */
   setMode(mode: 'read' | 'input'): void {
@@ -367,7 +424,16 @@ export class LiveView implements LiveViewLike {
     // silently freeze if another tab were in front (M3). Best-effort.
     await this.driver.page().bringToFront().catch(() => {});
 
-    try {
+    const wantsVideo = query.get('video') === '1' && this.videoEnabled();
+    if (wantsVideo) {
+      // H.264 path: no per-viewer screencast; the shared encoder feeds this
+      // socket. Input relay, mode/pause/tabs/actions work exactly the same.
+      ws.on('close', () => { void this.unsubscribeVideo(ws); });
+      await this.subscribeVideo(ws);
+      if (closedDuringAttach || this.stopping || !this.server) { await this.unsubscribeVideo(ws); ws.terminate(); return; }
+      cdp = await this.driver.cdpSession().catch(() => undefined); // for input relay only
+      if (!cdp) { ws.close(1011, 'echec cdp'); return; }
+    } else try {
       cdp = await this.driver.cdpSession();
       // m2: register the frame listener BEFORE startScreencast. ws dispatches
       // every protocol frame in a TCP chunk synchronously, so a screencastFrame
@@ -530,6 +596,8 @@ export class LiveView implements LiveViewLike {
 
     for (const c of this.controls) c.terminate();
     this.controls.clear();
+    this.videoViewers.clear();
+    if (this.video) { const v = this.video; this.video = undefined; await v.stop(); }
 
     // M5: terminate any client that passed the token check but isn't in
     // `sessions` yet (still mid-attach), or wss.close() below waits on it.

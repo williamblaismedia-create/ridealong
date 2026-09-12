@@ -131,7 +131,11 @@
   #screen { display: block; max-width: calc(100vw - 48px); max-height: calc(100vh - var(--bar) - 48px - 36px); width: auto; height: auto;
     background: var(--warm-900); touch-action: none; -webkit-user-select: none; user-select: none;
     transition: opacity var(--dur) var(--ease-out); }
-  body.input #screen { cursor: crosshair; }
+  #tv { display: none; position: absolute; inset: 0; width: 100%; height: 100%; background: var(--warm-900); border-radius: 0; }
+  body.video #tv { display: block; }
+  body.video #screen { visibility: hidden; } /* keeps the layout box; the video paints over it */
+  #vbtn.on { color: var(--terra-400); }
+  body.input #screen, body.input #tv { cursor: crosshair; }
   body.off #screen { opacity: 0.5; }
   /* Repères de visee : quatre coins, hors du cadre. */
   .tick { position: absolute; width: 14px; height: 14px; pointer-events: none; opacity: 0.35;
@@ -253,6 +257,10 @@
             <span class="sep"></span>
             <span class="stat"><b id="fps">0</b> i/s</span>
             <span class="sep"></span>
+            <button class="icon-btn" id="vbtn" type="button" title="Vidéo H.264 (GPU) / images JPEG" aria-label="Basculer vidéo ou images">
+              <svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+            </button>
+            <span class="sep"></span>
             <button class="icon-btn" id="jbtn" type="button" title="Journal des actions" aria-label="Journal des actions">
               <svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg>
             </button>
@@ -266,6 +274,7 @@
         </div>
         <div id="shot">
           <img id="screen" alt="vue live">
+          <video id="tv" muted autoplay playsinline></video>
           <div id="cursor" aria-hidden="true"><span class="ripple"></span><span class="ring"></span><span class="core"></span><span class="tag"></span></div>
         </div>
       </div>
@@ -318,6 +327,18 @@
   var scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
   var ws = null, retryTimer = 0, retryMs = 1000, gaveUp = false;
 
+  // Video (H.264 fMP4 through Media Source Extensions) when the browser can
+  // decode it and William hasn't switched it off; JPEG frames otherwise.
+  var tv = document.getElementById('tv'), vbtn = document.getElementById('vbtn');
+  var MIME = 'video/mp4; codecs="avc1.42E01E"';
+  var MS = window.ManagedMediaSource || window.MediaSource;
+  var canVideo = !!(MS && MS.isTypeSupported && MS.isTypeSupported(MIME));
+  var wantVideo = canVideo && (function () { try { return sessionStorage.getItem('scry.video') !== 'off'; } catch (e) { return true; } })();
+  var mediaSource = null, sb = null, appendQueue = [], videoUp = false, videoFailed = false;
+  function setVideoUI(on) { document.body.classList.toggle('video', on); vbtn.classList.toggle('on', on); }
+  vbtn.disabled = !canVideo;
+  if (!canVideo) vbtn.title = 'Vidéo non supportée par ce navigateur';
+
   // The link drops for ordinary reasons — the phone locks, Safari goes to
   // the background, the tunnel hiccups, the MCP server restarts. The token
   // stays valid through all of that, so reconnect on our own with a short
@@ -327,8 +348,11 @@
     clearTimeout(retryTimer);
     if (gaveUp) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-    var s = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token) + '&w=' + vs.w + '&h=' + vs.h);
+    var useVideo = wantVideo && !videoFailed;
+    var s = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token) + '&w=' + vs.w + '&h=' + vs.h + (useVideo ? '&video=1' : ''));
+    s.binaryType = 'arraybuffer';
     ws = s;
+    resetVideo();
     s.onopen = function () { retryMs = 1000; dot.classList.add('on'); document.body.classList.remove('off'); setEnabled(true); setMode(mode); };
     s.onerror = function () { /* no payload logged */ };
     s.onclose = function (ev) {
@@ -341,8 +365,18 @@
       retryMs = Math.min(10000, retryMs * 2);
     };
     s.onmessage = function (ev) {
-      var msg; try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch (e) { return; }
+      if (typeof ev.data !== 'string') { onVideoChunk(new Uint8Array(ev.data)); return; }
+      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (!msg) return;
+      if (msg.video) {
+        if (msg.video.error) { videoFailed = true; setVideoUI(false); hint.textContent = 'vidéo indisponible — images JPEG'; try { s.close(); } catch (e) {} return; }
+        if (msg.video.w) {
+          frameW = msg.video.w; frameH = msg.video.h; resEl.textContent = frameW + ' × ' + frameH;
+          // The <img> keeps the layout box: give it a blank canvas of the stream's size.
+          var c = document.createElement('canvas'); c.width = frameW; c.height = frameH; img.src = c.toDataURL('image/png');
+        }
+        return;
+      }
       if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
       if (Array.isArray(msg.tabs)) renderTabs(msg.tabs);
       if (msg.action) onAction(msg.action);
@@ -350,6 +384,7 @@
       if (typeof msg.data === 'string') {
         if (msg.w) frameW = msg.w;
         if (msg.h) frameH = msg.h;
+        if (videoUp) return; // JPEG frames don't flow on the video path; ignore strays
         img.src = 'data:image/jpeg;base64,' + msg.data;
         blip();
         frames++;
@@ -372,6 +407,62 @@
       var s = viewSize();
       if (s.w !== vs.w || s.h !== vs.h) { vs = s; send({ t: 'view', w: s.w, h: s.h }); }
     }, 300);
+  });
+
+  // ---- MSE : un init segment (0x01) ouvre un nouveau MediaSource, chaque
+  // fragment (0x02) est ajoute en sequence ; on colle au direct.
+  function resetVideo() {
+    appendQueue = []; sb = null; videoUp = false;
+    if (mediaSource) { try { if (mediaSource.readyState === 'open') mediaSource.endOfStream(); } catch (e) {} }
+    mediaSource = null;
+    try { tv.removeAttribute('src'); tv.load(); } catch (e) {}
+    setVideoUI(false);
+  }
+  function onVideoChunk(u8) {
+    var kind = u8[0], body = u8.subarray(1);
+    if (kind === 1) {
+      resetVideo();
+      var m = new MS(); mediaSource = m;
+      m.addEventListener('sourceopen', function () {
+        if (mediaSource !== m) return;
+        try { sb = m.addSourceBuffer(MIME); } catch (e) { videoFailed = true; resetVideo(); try { ws.close(); } catch (x) {} return; }
+        sb.mode = 'sequence';
+        sb.addEventListener('updateend', pump);
+        appendQueue.unshift(body);
+        pump();
+      });
+      if (window.ManagedMediaSource && m instanceof window.ManagedMediaSource) { tv.disableRemotePlayback = true; tv.srcObject = m; }
+      else tv.src = URL.createObjectURL(m);
+      setVideoUI(true);
+      tv.play().catch(function () {});
+    } else if (kind === 2) {
+      if (!sb) { if (mediaSource) appendQueue.push(body); return; }
+      appendQueue.push(body); pump();
+    }
+  }
+  function pump() {
+    if (!sb || sb.updating || !appendQueue.length) return;
+    try { sb.appendBuffer(appendQueue.shift()); videoUp = true; blip(); frames++; }
+    catch (e) { /* QuotaExceeded: trim and retry next tick */ trimVideo(true); }
+  }
+  function trimVideo(force) {
+    if (!sb || sb.updating || !tv.buffered.length) return;
+    var start = tv.buffered.start(0), cut = tv.currentTime - 8;
+    if (force || cut - start > 20) { try { sb.remove(start, Math.max(start + 0.1, cut)); } catch (e) {} }
+  }
+  // Rester au direct : si on traine de plus de 0.6 s derriere le bord, on saute.
+  setInterval(function () {
+    if (!videoUp || !tv.buffered.length) return;
+    var end = tv.buffered.end(tv.buffered.length - 1);
+    if (end - tv.currentTime > 0.6) tv.currentTime = Math.max(0, end - 0.12);
+    if (tv.paused) tv.play().catch(function () {});
+    trimVideo(false);
+  }, 1000);
+  vbtn.addEventListener('click', function () {
+    wantVideo = !wantVideo; videoFailed = false;
+    try { sessionStorage.setItem('scry.video', wantVideo ? 'on' : 'off'); } catch (e) {}
+    try { ws.close(); } catch (e) {} // reconnect with the other path
+    retryMs = 300;
   });
 
   // Bandeau : onglets, resolution, cadence (images recues par seconde).
@@ -397,9 +488,14 @@
 
   // Capturer : telecharge l'image affichee (cote client, rien ne transite).
   document.getElementById('snap').addEventListener('click', function () {
-    if (!img.src || img.src.indexOf('data:image/jpeg') !== 0) return;
+    var src = '';
+    if (videoUp && tv.videoWidth) {
+      var c = document.createElement('canvas'); c.width = tv.videoWidth; c.height = tv.videoHeight;
+      c.getContext('2d').drawImage(tv, 0, 0); src = c.toDataURL('image/jpeg', 0.92);
+    } else if (img.src && img.src.indexOf('data:image/jpeg') === 0) src = img.src;
+    if (!src) return;
     var a = document.createElement('a');
-    a.href = img.src; a.download = 'scry-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.jpg';
+    a.href = src; a.download = 'scry-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.jpg';
     document.body.appendChild(a); a.click(); a.remove();
   });
   // Plein ecran : le cadre seul, sans notch ; le flux est redemande a la
@@ -525,11 +621,12 @@
   function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
   function twoPointers() { var ids = Object.keys(pointers); return ids.length === 2 ? [pointers[ids[0]], pointers[ids[1]]] : null; }
 
-  img.addEventListener('pointerdown', function (e) {
+  var shot = document.getElementById('shot');
+  shot.addEventListener('pointerdown', function (e) {
     e.preventDefault();
     if (mode !== 'input') return;
     if (e.pointerType === 'mouse') { mouse('mousePressed', e.clientX, e.clientY, e); return; }
-    try { img.setPointerCapture(e.pointerId); } catch (x) {}
+    try { shot.setPointerCapture(e.pointerId); } catch (x) {}
     pointers[e.pointerId] = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY };
     touchCount = Object.keys(pointers).length;
     if (touchCount === 1) { gesture = 'tap'; }
@@ -538,7 +635,7 @@
       pinchCenter = { x: (pr[0].x + pr[1].x) / 2, y: (pr[0].y + pr[1].y) / 2 };
     }
   });
-  img.addEventListener('pointermove', function (e) {
+  shot.addEventListener('pointermove', function (e) {
     if (mode !== 'input') return;
     e.preventDefault();
     if (e.pointerType === 'mouse') { mouse('mouseMoved', e.clientX, e.clientY, e); return; }
@@ -567,10 +664,10 @@
     }
     if (remaining === 0) { gesture = null; pinchCenter = null; }
   }
-  img.addEventListener('pointerup', function (e) { e.preventDefault(); endPointer(e); });
-  img.addEventListener('pointercancel', function (e) { endPointer(e); });
+  shot.addEventListener('pointerup', function (e) { e.preventDefault(); endPointer(e); });
+  shot.addEventListener('pointercancel', function (e) { endPointer(e); });
   // Desktop: the wheel goes through as a wheel (ctrl+wheel = Chrome zoom).
-  img.addEventListener('wheel', function (e) {
+  shot.addEventListener('wheel', function (e) {
     if (mode !== 'input') return;
     e.preventDefault();
     var k = e.deltaMode === 1 ? 16 : 1;

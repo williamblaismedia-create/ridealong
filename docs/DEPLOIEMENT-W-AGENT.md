@@ -77,6 +77,14 @@ SCRY_LIVE_PUBLIC_URL=https://scry.wautomatisations.com
 # Qualité JPEG du screencast (1-100, défaut 85). La taille des images suit
 # l'écran de l'appareil qui regarde (pixels physiques), rien à régler ici.
 # SCRY_LIVE_QUALITY=85
+# Vidéo H.264 (défaut : activée). ffmpeg + NVENC sur w-agent, MP4 fragmenté
+# sur le websocket, décodé par le navigateur (MSE). Le viewer retombe sur
+# les images JPEG si le navigateur ne décode pas ou si ffmpeg échoue.
+# SCRY_VIDEO=on            # off pour forcer JPEG partout
+# SCRY_VIDEO_ENCODER=h264_nvenc   # libx264 sans GPU NVIDIA
+# SCRY_VIDEO_KBPS=3000
+# SCRY_VIDEO_FPS=20
+# SCRY_FFMPEG=/usr/bin/ffmpeg
 ```
 
 Générer le secret une seule fois et remplacer `CHANGE_ME` :

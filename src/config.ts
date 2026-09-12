@@ -21,6 +21,13 @@ export interface Config {
    * viewer's own screen (see LiveView / screencastParams).
    */
   liveQuality: number;
+  /**
+   * Video path (H.264 fMP4 over the live-view websocket, encoded by ffmpeg).
+   * SCRY_VIDEO=off disables it (viewers get JPEG frames only). SCRY_FFMPEG
+   * (binary), SCRY_VIDEO_ENCODER (h264_nvenc default; libx264 on a box
+   * without an NVIDIA GPU), SCRY_VIDEO_KBPS (3000), SCRY_VIDEO_FPS (20).
+   */
+  video: false | { ffmpeg?: string; encoder?: string; bitrateKbps?: number; fps?: number };
 }
 
 function expandHome(p: string): string {
@@ -57,5 +64,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     liveViewPort: intOr(env.SCRY_LIVE_PORT, 9400),
     livePublicUrl: env.SCRY_LIVE_PUBLIC_URL,
     liveQuality: Math.min(100, Math.max(1, intOr(env.SCRY_LIVE_QUALITY, 85))),
+    video: (env.SCRY_VIDEO ?? 'on').toLowerCase() === 'off' ? false : {
+      ffmpeg: env.SCRY_FFMPEG || undefined,
+      encoder: env.SCRY_VIDEO_ENCODER || undefined,
+      bitrateKbps: intOr(env.SCRY_VIDEO_KBPS, 3000),
+      fps: intOr(env.SCRY_VIDEO_FPS, 20),
+    },
   };
 }

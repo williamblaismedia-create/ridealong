@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { startBrowser } from './helpers.js';
 import { Driver } from '../src/driver.js';
 import { mintToken, verifyToken, LiveView, screencastParams } from '../src/live-view.js';
+import { execSync } from 'node:child_process';
+const hasFfmpeg = (() => { try { execSync('ffmpeg -version', { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 /** Width/height of a baseline or progressive JPEG, read from its SOF marker. */
 function jpegSize(buf: Buffer): { w: number; h: number } {
@@ -457,6 +459,39 @@ describe('LiveView (integration)', () => {
       expect(live.isPaused()).toBe(false);
     } finally { live.setPaused(false); ws.close(); }
   });
+
+  // Video path: a viewer that asks ?video=1 gets {video:{w,h,mime}} then
+  // BINARY messages — 0x01 + init segment, 0x02 + each moof/mdat — instead
+  // of JPEG frames. Encoded by ffmpeg (NVENC on w-agent, libx264 here).
+  it.skipIf(!hasFfmpeg)('serves an H.264 fMP4 stream to a viewer that asks for video', async () => {
+    const lv = new LiveView(driver, { secret, video: { encoder: 'libx264', bitrateKbps: 800, fps: 20 } });
+    await lv.start(PORT + 5);
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT + 5}/?token=${mintToken(secret, 60)}&video=1`);
+    let meta: any; let init: Buffer | undefined; const segs: Buffer[] = []; let jpeg = 0;
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) { const b = data as Buffer; if (b[0] === 1) init = b.subarray(1); else if (b[0] === 2) segs.push(b.subarray(1)); return; }
+      let m: any; try { m = JSON.parse(data.toString()); } catch { return; }
+      if (m && m.video) meta = m.video;
+      if (m && typeof m.data === 'string') jpeg++;
+    });
+    await new Promise<void>((resolve, reject) => { ws.on('open', () => resolve()); ws.on('error', reject); });
+    const poke = setInterval(() => { void driver.page().evaluate(() => { document.body.style.background = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'); }).catch(() => {}); }, 60);
+    try {
+      const deadline = Date.now() + 10000;
+      while (Date.now() < deadline && (!init || segs.length < 2)) await new Promise((r) => setTimeout(r, 100));
+      expect(meta).toBeDefined();
+      expect(meta.mime).toMatch(/avc1/);
+      expect(meta.w).toBe(1440);
+      expect(init).toBeDefined();
+      expect(init!.toString('latin1', 4, 8)).toBe('ftyp');
+      expect(segs.length).toBeGreaterThanOrEqual(2);
+      expect(jpeg).toBe(0); // no JPEG frames on the video path
+    } finally {
+      clearInterval(poke);
+      ws.close();
+      await lv.stop();
+    }
+  }, 25000);
 
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));

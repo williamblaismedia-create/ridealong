@@ -101,7 +101,7 @@ export async function main(): Promise<void> {
 
   if (cfg.secret) {
     try {
-      const owner = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality });
+      const owner = new LiveView(driver, { secret: cfg.secret, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video });
       await owner.start(cfg.liveViewPort);
       liveView = owner;
     } catch (e) {
