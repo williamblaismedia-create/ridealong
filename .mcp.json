@@ -1,0 +1,6 @@
+{
+  "ridealong": {
+    "command": "npx",
+    "args": ["-y", "-p", "ridealong-mcp", "ridealong"]
+  }
+}

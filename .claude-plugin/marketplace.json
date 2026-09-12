@@ -1,0 +1,16 @@
+{
+  "name": "ridealong",
+  "owner": { "name": "William Blais", "url": "https://github.com/williamblaismedia-create" },
+  "metadata": { "description": "Ridealong — a browser your AI drives, that you can watch live and take over.", "version": "0.1.0" },
+  "plugins": [
+    {
+      "name": "ridealong",
+      "displayName": "Ridealong",
+      "description": "Real Chrome driven by Claude, live H.264 view, approval gate, Manual mode, pointer hints, console/network/tabs tools.",
+      "version": "0.1.0",
+      "source": "./",
+      "category": "browser",
+      "keywords": ["browser", "chrome", "live-view", "human-in-the-loop"]
+    }
+  ]
+}

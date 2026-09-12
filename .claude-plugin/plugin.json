@@ -1,0 +1,12 @@
+{
+  "name": "ridealong",
+  "displayName": "Ridealong",
+  "description": "A browser your AI drives — watch it live, point, approve, or take the wheel from your phone. Real Chrome, live H.264 view, no-capture Manual mode.",
+  "version": "0.1.0",
+  "author": { "name": "William Blais — W Automatisations", "url": "https://wautomatisations.com" },
+  "homepage": "https://williamblaismedia-create.github.io/ridealong/",
+  "repository": "https://github.com/williamblaismedia-create/ridealong",
+  "license": "MIT",
+  "keywords": ["browser", "chrome", "live-view", "human-in-the-loop", "approval"],
+  "mcpServers": "./.mcp.json"
+}

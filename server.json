@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.williamblaismedia-create/ridealong",
+  "description": "A browser your AI drives — that you can watch live and take over. Real Chrome, live H.264 view, approval gate, Manual mode with no capture, pointer hints, console/network/tabs for the agent.",
+  "repository": { "url": "https://github.com/williamblaismedia-create/ridealong", "source": "github" },
+  "websiteUrl": "https://williamblaismedia-create.github.io/ridealong/",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "ridealong-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        { "name": "RIDEALONG_DATA_DIR", "description": "Profile, secret and artifacts directory (default ~/ridealong-data)", "isRequired": false },
+        { "name": "RIDEALONG_LIVE_PORT", "description": "Live view port (default 9400)", "isRequired": false },
+        { "name": "RIDEALONG_VIDEO", "description": "on/off — H.264 live stream via ffmpeg (default on)", "isRequired": false }
+      ]
+    }
+  ]
+}
