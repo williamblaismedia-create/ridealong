@@ -112,6 +112,9 @@ export class VideoStream extends EventEmitter {
   private running = false;
   private restartTimer: NodeJS.Timeout | undefined;
   private frames = 0;
+  private lastJpeg: Buffer | undefined;
+  private lastAt = 0;
+  private idleTimer: NodeJS.Timeout | undefined;
   public init: Buffer | undefined;
 
   constructor(private driver: Driver, private opts: VideoOpts) { super(); }
@@ -154,15 +157,25 @@ export class VideoStream extends EventEmitter {
     // Feed: one screencast on the primary tab at the encoder's size.
     const cdp = await this.driver.cdpSession();
     this.cdp = cdp;
+    const feed = (jpeg: Buffer) => {
+      // Backpressure: if ffmpeg falls behind (stdin buffer > ~8 MB), skip
+      // the frame rather than grow memory; the next one carries the same picture.
+      if (this.proc === proc && proc.stdin?.writable && (proc.stdin.writableLength ?? 0) < 8 * 1024 * 1024) proc.stdin.write(jpeg);
+    };
     cdp.on('Page.screencastFrame', async (f) => {
-      if (this.proc === proc && proc.stdin?.writable) {
-        this.frames++;
-        // Backpressure: if ffmpeg falls behind (stdin buffer > ~8 MB), skip
-        // the frame rather than grow memory; the next one carries the same picture.
-        if ((proc.stdin.writableLength ?? 0) < 8 * 1024 * 1024) proc.stdin.write(Buffer.from(f.data, 'base64'));
-      }
+      this.frames++;
+      this.lastJpeg = Buffer.from(f.data, 'base64');
+      this.lastAt = Date.now();
+      feed(this.lastJpeg);
       try { await cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }); } catch { /* tearing down */ }
     });
+    // Chrome emits a frame only when something changes. A still page would
+    // starve ffmpeg (no header, nothing for a viewer who just joined) and
+    // stall MSE. Re-feed the last frame at 2 fps while idle: near-free with
+    // VBR (identical P-frames), and the stream stays continuous.
+    this.idleTimer = setInterval(() => {
+      if (this.lastJpeg && Date.now() - this.lastAt >= 450) feed(this.lastJpeg);
+    }, 500);
     await this.driver.page().bringToFront().catch(() => {});
     await cdp.send('Page.startScreencast', { format: 'jpeg', quality: this.opts.jpegQuality ?? 92, maxWidth: this.opts.width, maxHeight: this.opts.height, everyNthFrame: 1 });
     this.running = true;
@@ -180,6 +193,8 @@ export class VideoStream extends EventEmitter {
 
   async stop(): Promise<void> {
     if (this.restartTimer) { clearTimeout(this.restartTimer); this.restartTimer = undefined; }
+    if (this.idleTimer) { clearInterval(this.idleTimer); this.idleTimer = undefined; }
+    this.lastJpeg = undefined;
     const cdp = this.cdp; this.cdp = undefined;
     if (cdp) {
       await cdp.send('Page.stopScreencast').catch(() => {});

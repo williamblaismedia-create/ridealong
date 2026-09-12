@@ -51,6 +51,18 @@ describe.skipIf(!hasFfmpeg)('VideoStream (integration, libx264 locally)', () => 
   });
   afterAll(async () => { await driver.close(); await env.stop(); });
 
+  it('a STILL page still yields an init segment and segments (last frame re-fed while idle)', async () => {
+    const vs = new VideoStream(driver, { width: 640, height: 400, fps: 20, bitrateKbps: 800, encoder: 'libx264' });
+    let init: Buffer | undefined; let segs = 0;
+    vs.on('init', (b) => { init = b; }); vs.on('segment', () => segs++);
+    await vs.start();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline && (!init || segs < 2)) await new Promise((r) => setTimeout(r, 100));
+    await vs.stop();
+    expect(init).toBeDefined();
+    expect(segs).toBeGreaterThanOrEqual(2);
+  }, 20000);
+
   it('emits an init segment then media segments as the page changes; stop() ends ffmpeg', async () => {
     const vs = new VideoStream(driver, { width: 640, height: 400, fps: 20, bitrateKbps: 800, encoder: 'libx264' });
     const segs: Buffer[] = [];
