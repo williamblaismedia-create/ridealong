@@ -15,7 +15,7 @@
   :root {
     --terra-400: #DF8B68; --terra-500: #DA7756; --terra-600: #C8603D; --terra-700: #A94B2D;
     --warm-25: #FAF8F5; --warm-200: #DDD6CB; --warm-400: #A69C8D; --warm-500: #82796C;
-    --warm-700: #463F38; --warm-800: #2A2622; --warm-900: #1A1714; --warm-950: #0E0C0A;
+    --warm-600: #605850; --warm-700: #463F38; --warm-800: #2A2622; --warm-900: #1A1714; --warm-950: #0E0C0A;
     --green-500: #3E7D5A; --amber-500: #C5882A;
     --border-inverse: rgba(255, 255, 255, 0.14);
     --font-sans: "Montserrat", "Helvetica Neue", Arial, sans-serif;
@@ -105,9 +105,18 @@
   body.input #frame { border-color: var(--terra-500); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--terra-500), var(--shadow-terra-sm); }
   #chrome { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; height: 36px; padding: 0 8px 0 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07); font: 500 11px/1 var(--font-mono); color: var(--warm-400); }
-  #url { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  #url .lock { width: 10px; height: 10px; flex: 0 0 auto; opacity: 0.7; }
-  #url span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.02em; color: var(--warm-200); }
+  /* Onglets Chrome en chips, defilables ; l'onglet principal (celui qu'on
+     regarde) porte la pupille terracotta. Affichage seulement pour l'instant. */
+  #tabs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; max-width: 220px; height: 24px; padding: 0 10px;
+    border-radius: var(--r-pill); border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03);
+    color: var(--warm-400); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), background var(--dur) var(--ease-out); }
+  .tab .pupil { width: 6px; height: 6px; border-radius: 50%; background: var(--warm-600); flex: 0 0 auto; }
+  .tab.primary { color: var(--warm-25); border-color: rgba(218, 119, 86, 0.55); background: rgba(218, 119, 86, 0.10); }
+  .tab.primary .pupil { background: var(--terra-500); box-shadow: 0 0 6px rgba(218, 119, 86, 0.6); }
+  .tab span { overflow: hidden; text-overflow: ellipsis; }
   #meta { display: flex; align-items: center; gap: 4px; }
   #meta .stat { padding: 0 8px; letter-spacing: 0.08em; white-space: nowrap; }
   #meta .stat b { font-weight: 600; color: var(--warm-200); }
@@ -178,10 +187,7 @@
       <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
       <div id="frame">
         <div id="chrome">
-          <div id="url">
-            <svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor"/><path d="M4 5V3.5a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
-            <span id="urltext">—</span>
-          </div>
+          <div id="tabs" aria-label="onglets"></div>
           <div id="meta">
             <span class="stat res"><b id="res">—</b></span>
             <span class="sep"></span>
@@ -267,13 +273,14 @@
       var msg; try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch (e) { return; }
       if (!msg) return;
       if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
+      if (Array.isArray(msg.tabs)) renderTabs(msg.tabs);
       if (typeof msg.data === 'string') {
         if (msg.w) frameW = msg.w;
         if (msg.h) frameH = msg.h;
         img.src = 'data:image/jpeg;base64,' + msg.data;
         blip();
         frames++;
-        if (typeof msg.url === 'string' && msg.url !== lastUrl) { lastUrl = msg.url; urlText.textContent = prettyUrl(msg.url); }
+        if (typeof msg.url === 'string' && msg.url !== lastUrl) { lastUrl = msg.url; }
         if (frameW && frameH) resEl.textContent = frameW + ' × ' + frameH;
       }
     };
@@ -294,10 +301,25 @@
     }, 300);
   });
 
-  // Bandeau : url, resolution, cadence (images recues par seconde).
-  var urlText = document.getElementById('urltext'), resEl = document.getElementById('res'), fpsEl = document.getElementById('fps');
-  var frames = 0, lastUrl = '';
-  function prettyUrl(u) { try { var x = new URL(u); return x.host + (x.pathname === '/' ? '' : x.pathname) + x.search; } catch (e) { return u; } }
+  // Bandeau : onglets, resolution, cadence (images recues par seconde).
+  var tabsEl = document.getElementById('tabs'), resEl = document.getElementById('res'), fpsEl = document.getElementById('fps');
+  var frames = 0, lastUrl = '', lastTabsJson = '';
+  function prettyUrl(u) { try { var x = new URL(u); return x.host + (x.pathname === '/' ? '' : x.pathname); } catch (e) { return u || '—'; } }
+  function renderTabs(tabs) {
+    var json = JSON.stringify(tabs);
+    if (json === lastTabsJson) return;
+    lastTabsJson = json;
+    tabsEl.textContent = '';
+    tabs.forEach(function (t) {
+      var chip = document.createElement('div');
+      chip.className = 'tab' + (t.primary ? ' primary' : '');
+      chip.title = (t.title ? t.title + ' — ' : '') + t.url;
+      var pupil = document.createElement('i'); pupil.className = 'pupil';
+      var label = document.createElement('span'); label.textContent = prettyUrl(t.url);
+      chip.appendChild(pupil); chip.appendChild(label);
+      tabsEl.appendChild(chip);
+    });
+  }
   setInterval(function () { fpsEl.textContent = String(frames); frames = 0; }, 1000);
 
   // Capturer : telecharge l'image affichee (cote client, rien ne transite).
@@ -360,16 +382,77 @@
   }
   function mods(e) { return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0); }
 
-  // Pointer events unify mouse + touch + pen (iOS Safari supports them), so one
-  // set of handlers covers the iPhone. Relayed only in input mode.
-  function mouse(type, e) {
+  // Pointer events unify mouse + touch + pen. Relayed only in input mode.
+  // Mouse: press / move / release as-is (a drag stays a drag), wheel relayed.
+  // Touch: one finger = tap (press+release on lift) or, once it moves, a
+  // scroll relayed as wheel deltas; two fingers = pinch, relayed on lift as
+  // one synthesized pinch gesture centred between the fingers.
+  var TAP_SLOP = 8;
+  var pointers = {};        // pointerId -> { sx, sy, x, y, page }
+  var touchCount = 0, gesture = null, pinchStart = 0, pinchScale = 1, pinchCenter = null;
+  function scaleFactor() { var r = img.getBoundingClientRect(); return (r.width && frameW) ? frameW / r.width : 1; }
+  function mouse(type, x, y, e, extra) {
     if (mode !== 'input') return;
-    var p = toPage(e.clientX, e.clientY);
-    if (p) send({ t: 'mouse', type: type, x: p.x, y: p.y, button: 'left', clickCount: 1, modifiers: mods(e) });
+    var p = toPage(x, y);
+    if (!p) return;
+    var m = { t: 'mouse', type: type, x: p.x, y: p.y, button: 'left', clickCount: 1, modifiers: mods(e) };
+    if (extra) for (var k in extra) m[k] = extra[k];
+    send(m);
   }
-  img.addEventListener('pointerdown', function (e) { e.preventDefault(); mouse('mousePressed', e); });
-  img.addEventListener('pointerup', function (e) { e.preventDefault(); mouse('mouseReleased', e); if (mode === 'input') { try { kb.focus(); } catch (x) {} } });
-  img.addEventListener('pointermove', function (e) { if (mode === 'input') { e.preventDefault(); mouse('mouseMoved', e); } });
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+  function twoPointers() { var ids = Object.keys(pointers); return ids.length === 2 ? [pointers[ids[0]], pointers[ids[1]]] : null; }
+
+  img.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    if (mode !== 'input') return;
+    if (e.pointerType === 'mouse') { mouse('mousePressed', e.clientX, e.clientY, e); return; }
+    try { img.setPointerCapture(e.pointerId); } catch (x) {}
+    pointers[e.pointerId] = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY };
+    touchCount = Object.keys(pointers).length;
+    if (touchCount === 1) { gesture = 'tap'; }
+    else if (touchCount === 2) {
+      var pr = twoPointers(); gesture = 'pinch'; pinchStart = dist(pr[0], pr[1]); pinchScale = 1;
+      pinchCenter = { x: (pr[0].x + pr[1].x) / 2, y: (pr[0].y + pr[1].y) / 2 };
+    }
+  });
+  img.addEventListener('pointermove', function (e) {
+    if (mode !== 'input') return;
+    e.preventDefault();
+    if (e.pointerType === 'mouse') { mouse('mouseMoved', e.clientX, e.clientY, e); return; }
+    var pt = pointers[e.pointerId]; if (!pt) return;
+    var dx = e.clientX - pt.x, dy = e.clientY - pt.y;
+    pt.x = e.clientX; pt.y = e.clientY;
+    if (gesture === 'tap' && Math.hypot(e.clientX - pt.sx, e.clientY - pt.sy) > TAP_SLOP) gesture = 'scroll';
+    if (gesture === 'scroll') {
+      var k = scaleFactor();
+      mouse('mouseWheel', e.clientX, e.clientY, e, { deltaX: -dx * k, deltaY: -dy * k });
+    } else if (gesture === 'pinch') {
+      var pr = twoPointers(); if (pr && pinchStart > 0) pinchScale = dist(pr[0], pr[1]) / pinchStart;
+    }
+  });
+  function endPointer(e) {
+    if (e.pointerType === 'mouse') { if (mode === 'input') { mouse('mouseReleased', e.clientX, e.clientY, e); try { kb.focus(); } catch (x) {} } return; }
+    var pt = pointers[e.pointerId]; delete pointers[e.pointerId];
+    var remaining = Object.keys(pointers).length;
+    if (mode !== 'input' || !pt) { gesture = remaining ? gesture : null; return; }
+    if (gesture === 'tap' && remaining === 0) {
+      mouse('mousePressed', e.clientX, e.clientY, e); mouse('mouseReleased', e.clientX, e.clientY, e);
+      try { kb.focus(); } catch (x) {}
+    } else if (gesture === 'pinch' && remaining === 0 && pinchCenter && Math.abs(pinchScale - 1) > 0.05) {
+      var p = toPage(pinchCenter.x, pinchCenter.y);
+      if (p) send({ t: 'pinch', x: p.x, y: p.y, scaleFactor: pinchScale });
+    }
+    if (remaining === 0) { gesture = null; pinchCenter = null; }
+  }
+  img.addEventListener('pointerup', function (e) { e.preventDefault(); endPointer(e); });
+  img.addEventListener('pointercancel', function (e) { endPointer(e); });
+  // Desktop: the wheel goes through as a wheel (ctrl+wheel = Chrome zoom).
+  img.addEventListener('wheel', function (e) {
+    if (mode !== 'input') return;
+    e.preventDefault();
+    var k = e.deltaMode === 1 ? 16 : 1;
+    mouse('mouseWheel', e.clientX, e.clientY, e, { deltaX: e.deltaX * k, deltaY: e.deltaY * k });
+  }, { passive: false });
 
   // Keyboard, captured at window level (covers a physical keyboard and the
   // hidden #kb input that only exists to raise the mobile soft keyboard).

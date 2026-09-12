@@ -88,6 +88,11 @@ export class LiveView {
   // Set for the duration of stop(): an attach that finishes after clear() must
   // see this and tear itself down instead of leaving an untracked screencast.
   private stopping = false;
+  // Tab list pushed to viewers as {tabs:[...]}: polled while anyone is
+  // attached (cheap: url() is sync, title() is raced against a short timeout),
+  // sent only when it changed. The PRIMARY tab (the one being cast) is marked.
+  private tabsTimer: NodeJS.Timeout | undefined;
+  private lastTabsJson = '';
 
   /**
    * pingMs: interval of the server-side websocket pings that keep an idle
@@ -112,6 +117,45 @@ export class LiveView {
       if (ws.readyState === ws.OPEN) {
         try { ws.send(payload); } catch { /* a dead socket is cleaned up elsewhere */ }
       }
+    }
+  }
+
+  private async tabList(): Promise<Array<{ id: number; url: string; title: string; primary: boolean }>> {
+    const primary = this.driver.page();
+    const pages = this.driver.context().pages();
+    return Promise.all(pages.map(async (p, id) => {
+      const url = p.url();
+      const title = await Promise.race([
+        p.title().catch(() => ''),
+        new Promise<string>((r) => setTimeout(() => r(''), 300)),
+      ]);
+      return { id, url, title, primary: p === primary };
+    }));
+  }
+
+  /** Push the tab list to every viewer if it changed (or to one socket, always). */
+  private async pushTabs(only?: WebSocket): Promise<void> {
+    let json: string;
+    try { json = JSON.stringify({ tabs: await this.tabList() }); } catch { return; }
+    if (only) {
+      if (only.readyState === only.OPEN) { try { only.send(json); } catch { /* dead socket */ } }
+      return;
+    }
+    if (json === this.lastTabsJson) return;
+    this.lastTabsJson = json;
+    for (const ws of this.sessions.keys()) {
+      if (ws.readyState === ws.OPEN) { try { ws.send(json); } catch { /* cleaned up elsewhere */ } }
+    }
+  }
+
+  private syncTabsPolling(): void {
+    if (this.sessions.size > 0 && !this.tabsTimer) {
+      this.tabsTimer = setInterval(() => { void this.pushTabs(); }, 1500);
+      this.tabsTimer.unref?.();
+    } else if (this.sessions.size === 0 && this.tabsTimer) {
+      clearInterval(this.tabsTimer);
+      this.tabsTimer = undefined;
+      this.lastTabsJson = '';
     }
   }
 
@@ -254,6 +298,7 @@ export class LiveView {
         await cdp.detach().catch(() => {});
       }
       this.sessions.delete(ws);
+      this.syncTabsPolling();
     });
 
     // Bring the cast (PRIMARY) tab to the foreground: in headful Chrome a
@@ -311,6 +356,8 @@ export class LiveView {
     }
 
     this.sessions.set(ws, cdp);
+    this.syncTabsPolling();
+    void this.pushTabs(ws); // this viewer gets the list right away
 
     // Hand-the-wheel input relay. Wired only once the socket is confirmed open
     // with `cdp` attached. NO-CAPTURE: besides the `cdp.send` call itself, this
@@ -347,6 +394,7 @@ export class LiveView {
         if (this.mode !== 'input') return; // read mode: input is ignored entirely
         if (t === 'mouse') await cdp!.send('Input.dispatchMouseEvent', rest);
         else if (t === 'key') await cdp!.send('Input.dispatchKeyEvent', rest);
+        else if (t === 'pinch') await cdp!.send('Input.synthesizePinchGesture', rest);
       } catch {
         // Malformed JSON or a CDP dispatch failure: drop silently. Never
         // log or retain `raw`/`msg` — that is the no-capture guarantee.
@@ -394,6 +442,7 @@ export class LiveView {
       ws.terminate();
     }
     this.sessions.clear();
+    this.syncTabsPolling();
 
     // M5: terminate any client that passed the token check but isn't in
     // `sessions` yet (still mid-attach), or wss.close() below waits on it.

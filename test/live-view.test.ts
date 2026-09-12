@@ -361,6 +361,66 @@ describe('LiveView (integration)', () => {
     }
   });
 
+  // Tabs ride to the viewer as {tabs:[...]}: on connect, then whenever the
+  // list changes. The PRIMARY (cast) tab is marked so the chips can show it.
+  it('pushes the tab list to viewers, primary marked, and again when a tab opens', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    const nextTabs = (pred: (t: any[]) => boolean, ms = 4000) => new Promise<any[]>((resolve, reject) => {
+      const timer = setTimeout(() => { ws.off('message', on); reject(new Error('no matching tabs push')); }, ms);
+      const on = (data: WebSocket.RawData) => {
+        let m: any; try { m = JSON.parse(data.toString()); } catch { return; }
+        if (m && Array.isArray(m.tabs) && pred(m.tabs)) { clearTimeout(timer); ws.off('message', on); resolve(m.tabs); }
+      };
+      ws.on('message', on);
+    });
+    let extra: import('playwright').Page | undefined;
+    try {
+      const first = await nextTabs((t) => t.length >= 1);
+      expect(first.filter((t) => t.primary)).toHaveLength(1);
+      expect(typeof first[0].url).toBe('string');
+      const before = first.length;
+      const waiting = nextTabs((t) => t.length === before + 1);
+      extra = await driver.context().newPage();
+      await extra.goto('about:blank');
+      const after = await waiting;
+      expect(after.filter((t) => t.primary)).toHaveLength(1);
+    } finally {
+      await extra?.close().catch(() => {});
+      ws.close();
+    }
+  });
+
+  it('input mode relays a wheel message: the page scrolls', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      await driver.page().evaluate(() => { document.body.style.height = '6000px'; window.scrollTo(0, 0); });
+      live.setMode('input');
+      ws.send(JSON.stringify({ t: 'mouse', type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY: 800 }));
+      const deadline = Date.now() + 3000;
+      let y = 0;
+      while (Date.now() < deadline) { y = await driver.page().evaluate(() => window.scrollY); if (y > 0) break; await new Promise((r) => setTimeout(r, 100)); }
+      expect(y).toBeGreaterThan(0);
+    } finally {
+      live.setMode('read');
+      await driver.page().evaluate(() => { document.body.style.height = ''; window.scrollTo(0, 0); });
+      ws.close();
+    }
+  });
+
+  it('input mode accepts a pinch message (relayed to Input.synthesizePinchGesture) without dropping the session', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      live.setMode('input');
+      ws.send(JSON.stringify({ t: 'pinch', x: 300, y: 300, scaleFactor: 1.5 }));
+      await new Promise((r) => setTimeout(r, 500));
+      expect(ws.readyState).toBe(WebSocket.OPEN);
+      expect(live.sessionCount()).toBeGreaterThanOrEqual(1);
+    } finally {
+      live.setMode('read');
+      ws.close();
+    }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {
@@ -512,7 +572,7 @@ describe('LiveView (integration)', () => {
     //    HANDLES (complex/circular by nature, and not capture surfaces), and
     //    assert the serialized state never contains the typed text — this is
     //    what a `log: string[]` or a stashed `lastMsg` would show up in;
-    const skip = new Set(['driver', 'server', 'httpServer', 'sessions']);
+    const skip = new Set(['driver', 'server', 'httpServer', 'sessions', 'tabsTimer']); // handles, not capture surfaces
     const own: Record<string, unknown> = {};
     for (const k of Object.keys(live as unknown as Record<string, unknown>)) {
       if (!skip.has(k)) own[k] = (live as unknown as Record<string, unknown>)[k];
