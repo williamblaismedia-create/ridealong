@@ -74,20 +74,20 @@ SCRY_DATA_DIR=$HOME/scry-donnees
 SCRY_LIVE_PORT=9400
 SCRY_LIVE_SECRET=CHANGE_ME
 SCRY_LIVE_PUBLIC_URL=https://scry.wautomatisations.com
-# Résolution du viewport piloté (2K depuis le 2026-09-12 ; l'écran virtuel
-# Xvfb reste en 1440x900, Chrome rend le viewport émulé en entier).
-SCRY_VIEWPORT_WIDTH=2560
-SCRY_VIEWPORT_HEIGHT=1440
+# Résolution du viewport piloté (1920x1080 depuis le 2026-09-12 ; l'écran
+# virtuel Xvfb reste en 1440x900, Chrome rend le viewport émulé en entier).
+SCRY_VIEWPORT_WIDTH=1920
+SCRY_VIEWPORT_HEIGHT=1080
 # Qualité JPEG du screencast (1-100, défaut 85). La taille des images suit
 # l'écran de l'appareil qui regarde (pixels physiques), rien à régler ici.
-SCRY_LIVE_QUALITY=90
+SCRY_LIVE_QUALITY=92
 # Vidéo H.264 (défaut : activée). ffmpeg + NVENC sur w-agent, MP4 fragmenté
 # sur le websocket, décodé par le navigateur (MSE). Le viewer retombe sur
 # les images JPEG si le navigateur ne décode pas ou si ffmpeg échoue.
 # SCRY_VIDEO=on            # off pour forcer JPEG partout
 # SCRY_VIDEO_ENCODER=h264_nvenc   # libx264 sans GPU NVIDIA
-# SCRY_VIDEO_KBPS=8500          # défaut : suit le viewport (~3000 en 1440x900, ~8500 en 2K)
-# SCRY_VIDEO_FPS=20
+# SCRY_VIDEO_KBPS=8000          # défaut : suit le viewport (~5000 en 1440x900, ~8000 en 1080p) ; NVENC p4, VBR cq 19, AQ
+# SCRY_VIDEO_FPS=30
 # SCRY_FFMPEG=/usr/bin/ffmpeg
 ```
 

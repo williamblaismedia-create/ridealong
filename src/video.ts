@@ -27,7 +27,7 @@ import type { Driver } from './driver.js';
 export interface VideoOpts {
   width: number;
   height: number;
-  fps?: number;          // input cap; default 20
+  fps?: number;          // input cap; default 30
   bitrateKbps?: number;  // default 3000
   ffmpeg?: string;       // binary; default 'ffmpeg'
   encoder?: string;      // default 'h264_nvenc'; tests use 'libx264'
@@ -36,15 +36,20 @@ export interface VideoOpts {
 
 export const VIDEO_MIME = 'video/mp4; codecs="avc1.42E01E"'; // Constrained Baseline 3.0
 
-/** Default bitrate scaled to the frame: ~3 Mb/s at 1440x900, ~8.5 Mb/s at 2560x1440 (UI text needs it). */
+/** Default target bitrate scaled to the frame: ~5 Mb/s at 1440x900, ~8 Mb/s at 1920x1080 (UI text needs it; VBR spends less on static pages). */
 export function defaultBitrateKbps(width: number, height: number): number {
-  return Math.round(3000 * (width * height) / (1440 * 900));
+  return Math.round(5000 * (width * height) / (1440 * 900));
 }
 
 /** ffmpeg argv for the pipeline; exported for tests/inspection. */
 export function ffmpegArgs(o: Required<Pick<VideoOpts, 'fps' | 'bitrateKbps' | 'encoder'>>): string[] {
+  // NVENC: quality-first. p4 + VBR driven by a constant-quality target with
+  // spatial/temporal AQ keeps UI text crisp and spends bits only on motion
+  // (a static page costs almost nothing); the maxrate cap bounds the burst.
+  // Compared on w-agent at 1080p against p1/CBR: ~1.7x the bytes on a worst-
+  // case test pattern, visibly sharper text.
   const enc = o.encoder === 'h264_nvenc'
-    ? ['-c:v', 'h264_nvenc', '-preset', 'p1', '-tune', 'll', '-rc', 'cbr', '-zerolatency', '1']
+    ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'll', '-rc', 'vbr', '-cq', '19', '-spatial-aq', '1', '-temporal-aq', '1', '-zerolatency', '1']
     : o.encoder === 'libx264'
       ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency']
       : ['-c:v', o.encoder];
@@ -54,7 +59,7 @@ export function ffmpegArgs(o: Required<Pick<VideoOpts, 'fps' | 'bitrateKbps' | '
     '-fps_mode', 'passthrough',
     '-vf', 'format=yuv420p',
     ...enc,
-    '-b:v', `${o.bitrateKbps}k`, '-maxrate', `${Math.round(o.bitrateKbps * 1.3)}k`, '-bufsize', `${Math.round(o.bitrateKbps / 3)}k`,
+    '-b:v', `${o.bitrateKbps}k`, '-maxrate', `${Math.round(o.bitrateKbps * 1.75)}k`, '-bufsize', `${Math.round(o.bitrateKbps * 0.9)}k`,
     // No explicit -level: h264_nvenc rejects it ("incorrect parameters") and
     // picks the right one from the size/rate itself. Verified on w-agent.
     '-g', String(o.fps * 2), '-bf', '0', '-profile:v', 'baseline',
@@ -123,7 +128,7 @@ export class VideoStream extends EventEmitter {
   }
 
   private async doStart(): Promise<void> {
-    const fps = this.opts.fps ?? 20;
+    const fps = this.opts.fps ?? 30;
     const args = ffmpegArgs({ fps, bitrateKbps: this.opts.bitrateKbps ?? defaultBitrateKbps(this.opts.width, this.opts.height), encoder: this.opts.encoder ?? 'h264_nvenc' });
     const proc = spawn(this.opts.ffmpeg ?? 'ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     this.proc = proc;
@@ -159,7 +164,7 @@ export class VideoStream extends EventEmitter {
       try { await cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }); } catch { /* tearing down */ }
     });
     await this.driver.page().bringToFront().catch(() => {});
-    await cdp.send('Page.startScreencast', { format: 'jpeg', quality: this.opts.jpegQuality ?? 80, maxWidth: this.opts.width, maxHeight: this.opts.height, everyNthFrame: 1 });
+    await cdp.send('Page.startScreencast', { format: 'jpeg', quality: this.opts.jpegQuality ?? 92, maxWidth: this.opts.width, maxHeight: this.opts.height, everyNthFrame: 1 });
     this.running = true;
   }
 

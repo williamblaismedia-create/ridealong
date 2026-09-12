@@ -25,13 +25,14 @@ describe('Mp4Splitter (pure)', () => {
   });
 
   it('default bitrate scales with the frame size (2K gets ~2.8x the 1440x900 budget)', () => {
-    expect(defaultBitrateKbps(1440, 900)).toBe(3000);
-    expect(defaultBitrateKbps(2560, 1440)).toBe(8533);
+    expect(defaultBitrateKbps(1440, 900)).toBe(5000);
+    expect(defaultBitrateKbps(1920, 1080)).toBe(8000);
   });
 
   it('ffmpegArgs targets Constrained Baseline fMP4 with 100ms fragments (what MSE on iOS/Chrome decodes)', () => {
     const a = ffmpegArgs({ fps: 20, bitrateKbps: 3000, encoder: 'h264_nvenc' });
     expect(a).toContain('h264_nvenc');
+    expect(a.join(' ')).toMatch(/-preset p4 .*-rc vbr -cq 19/); // quality-first
     expect(a.join(' ')).toMatch(/-profile:v baseline/);
     expect(a.join(' ')).toMatch(/frag_keyframe\+empty_moov\+default_base_moof/);
     expect(a.join(' ')).toMatch(/-frag_duration 100000/);
