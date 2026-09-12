@@ -44,7 +44,7 @@ describe('MCP transport integration', () => {
     expect(names).toContain('snapshot');
   });
 
-  it('every tool carries a real description, and tabs_select states the primary-tab limitation (M3)', async () => {
+  it('every tool carries a real description, and tabs_select says the target moves (perception/action/live view follow)', async () => {
     const { tools } = await client.listTools();
     expect(tools.length).toBeGreaterThan(0);
     for (const t of tools) {
@@ -52,7 +52,7 @@ describe('MCP transport integration', () => {
       expect((t.description ?? '').length).toBeGreaterThan(15);
     }
     const select = tools.find((t) => t.name === 'tabs_select');
-    expect(select?.description).toMatch(/principal/i);
+    expect(select?.description).toMatch(/cible/i);
   });
 
   it('calls a tool through the real MCP path and gets the tool result back', async () => {

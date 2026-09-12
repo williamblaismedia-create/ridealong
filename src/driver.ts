@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright';
 
 // Transient CDP/Playwright errors: the target or session flickered but the
@@ -20,28 +21,52 @@ export async function withRetry<T>(fn: () => Promise<T>, opts?: { tries?: number
   }
 }
 
-export class Driver {
+/**
+ * The driver has ONE target page at a time: perception, action, network
+ * capture and the live view all follow `page()`. `setPage()` moves the
+ * target (tabs_select / tabs_open / a chip tap on the viewer) and emits
+ * 'page' so dependents re-attach.
+ */
+export class Driver extends EventEmitter {
   private dialogHandled = false;
   private dialogOpen = false;
+  private wired = new WeakSet<Page>();
 
-  private constructor(private browser: Browser, private _page: Page) {}
+  private constructor(private browser: Browser, private _page: Page, private opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number }) {
+    super();
+  }
+
+  private wire(page: Page): void {
+    if (this.wired.has(page)) return;
+    this.wired.add(page);
+    page.setDefaultTimeout(this.opts.defaultTimeoutMs);
+    // Native dialogs must never freeze the session: auto-dismiss, record that one
+    // appeared, and track live open/closed state (dialogOpen is only true while a
+    // dialog is actually up — it must not stick true after dismissal).
+    page.on('dialog', async (d) => {
+      this.dialogHandled = true;
+      this.dialogOpen = true;
+      await d.dismiss().catch(() => {});
+      this.dialogOpen = false;
+    });
+  }
+
+  /** Move the target to another open tab. No-op when it's already the target. */
+  setPage(page: Page): void {
+    if (page === this._page) return;
+    this._page = page;
+    this.wire(page);
+    void page.setViewportSize(this.opts.viewport).catch(() => {});
+    this.emit('page', page);
+  }
 
   static async connect(cdpUrl: string, opts: { viewport: { width: number; height: number }; defaultTimeoutMs: number }): Promise<Driver> {
     const browser = await chromium.connectOverCDP(cdpUrl);
     const context = browser.contexts()[0] ?? (await browser.newContext());
     const page = context.pages()[0] ?? (await context.newPage());
     await page.setViewportSize(opts.viewport);
-    page.setDefaultTimeout(opts.defaultTimeoutMs);
-    const driver = new Driver(browser, page);
-    // Native dialogs must never freeze the session: auto-dismiss, record that one
-    // appeared, and track live open/closed state (dialogOpen is only true while a
-    // dialog is actually up — it must not stick true after dismissal).
-    page.on('dialog', async (d) => {
-      driver.dialogHandled = true;
-      driver.dialogOpen = true;
-      await d.dismiss().catch(() => {});
-      driver.dialogOpen = false;
-    });
+    const driver = new Driver(browser, page, opts);
+    driver.wire(page);
     return driver;
   }
 

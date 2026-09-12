@@ -106,15 +106,17 @@
   #chrome { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; height: 36px; padding: 0 8px 0 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07); font: 500 11px/1 var(--font-mono); color: var(--warm-400); }
   /* Onglets Chrome en chips, defilables ; l'onglet principal (celui qu'on
-     regarde) porte la pupille terracotta. Affichage seulement pour l'instant. */
+     regarde) porte la pupille terracotta ; un tap sur un autre deplace la cible. */
   #tabs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   #tabs::-webkit-scrollbar { display: none; }
-  .tab { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; max-width: 220px; height: 24px; padding: 0 10px;
+  .tab { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; max-width: 220px; height: 24px; padding: 0 10px; font: inherit; cursor: pointer; touch-action: manipulation;
     border-radius: var(--r-pill); border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03);
     color: var(--warm-400); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), background var(--dur) var(--ease-out); }
   .tab .pupil { width: 6px; height: 6px; border-radius: 50%; background: var(--warm-600); flex: 0 0 auto; }
-  .tab.primary { color: var(--warm-25); border-color: rgba(218, 119, 86, 0.55); background: rgba(218, 119, 86, 0.10); }
+  .tab:hover { color: var(--warm-25); border-color: rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.06); }
+  .tab:focus-visible { outline: none; box-shadow: var(--ring-focus-inverse); }
+  .tab.primary { color: var(--warm-25); border-color: rgba(218, 119, 86, 0.55); background: rgba(218, 119, 86, 0.10); cursor: default; }
   .tab.primary .pupil { background: var(--terra-500); box-shadow: 0 0 6px rgba(218, 119, 86, 0.6); }
   .tab span { overflow: hidden; text-overflow: ellipsis; }
   #meta { display: flex; align-items: center; gap: 4px; }
@@ -475,9 +477,11 @@
     lastTabsJson = json;
     tabsEl.textContent = '';
     tabs.forEach(function (t) {
-      var chip = document.createElement('div');
+      var chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'tab' + (t.primary ? ' primary' : '');
       chip.title = (t.title ? t.title + ' — ' : '') + t.url;
+      if (!t.primary) chip.addEventListener('click', function () { send({ t: 'tab', id: t.id }); });
       var pupil = document.createElement('i'); pupil.className = 'pupil';
       var label = document.createElement('span'); label.textContent = prettyUrl(t.url);
       chip.appendChild(pupil); chip.appendChild(label);

@@ -493,6 +493,40 @@ describe('LiveView (integration)', () => {
     }
   }, 25000);
 
+  it('the screencast follows the target: after driver.setPage, frames carry the new tab\'s url', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    const other = await driver.context().newPage();
+    const urlB = `${env.pageUrl}?t=cast`;
+    await other.goto(urlB);
+    try {
+      driver.setPage(other);
+      const deadline = Date.now() + 6000;
+      let url = '';
+      const poke = setInterval(() => { void other.evaluate(() => { document.body.style.background = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'); }).catch(() => {}); }, 100);
+      const got = new Promise<void>((resolve) => {
+        ws.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && typeof m.data === 'string' && m.url === urlB) { url = m.url; resolve(); } });
+      });
+      await Promise.race([got, new Promise((r) => setTimeout(r, deadline - Date.now()))]);
+      clearInterval(poke);
+      expect(url).toBe(urlB);
+    } finally {
+      driver.setPage(driver.context().pages()[0]);
+      await other.close();
+      ws.close();
+    }
+  });
+
+  it('a viewer can pick a tab: {t:"tab", id} calls the tab selector', async () => {
+    const picked: number[] = [];
+    live.setTabSelector(async (id) => { picked.push(id); });
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      ws.send(JSON.stringify({ t: 'tab', id: 0 }));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(picked).toEqual([0]);
+    } finally { live.setTabSelector(undefined); ws.close(); }
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {

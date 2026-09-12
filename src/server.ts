@@ -22,17 +22,17 @@ function tabsLines(list: TabInfo[]): string {
 
 interface Tool { desc: string; shape: Record<string, z.ZodTypeAny>; run: (args: any) => Promise<string> }
 
-// Repeated in the tabs_*/live_* descriptions: v1 binds perception, action and
-// the live-view screencast to the PRIMARY tab only. tabs_select/tabs_open just
-// change which tab Chrome shows; they do NOT move where Scry looks or acts
-// (rebinding via Driver.setPage() is a deferred follow-up). Say so in the
-// tool text so the model doesn't assume a switch that never happens.
+// Repeated in the tabs_*/live_* descriptions: perception, action and the
+// live view all follow ONE target tab. tabs_select / tabs_open MOVE that
+// target (Driver.setPage), so after a switch the model must snapshot again —
+// refs from the previous tab no longer apply.
 const PRIMARY_TAB_NOTE =
-  'Perception, action et la vue live ciblent TOUJOURS l\'onglet principal ; tabs_select/tabs_open ne font que changer l\'onglet affiche par Chrome, sans deplacer ou Scry regarde/agit.';
+  'Perception, action et la vue live suivent l\'onglet CIBLE ; tabs_select/tabs_open deplacent cette cible (refaire un snapshot apres un changement, les [ref] de l\'autre onglet ne valent plus). William peut aussi changer d\'onglet depuis la vue live.';
 
 export function buildServer(deps: { perception: Perception; action: Action; network: Network; liveView?: LiveViewLike }) {
   const { perception, action, network, liveView } = deps;
   const tabs = new Tabs(perception.driver);
+  liveView?.setTabSelector?.((id) => tabs.select(id)); // a chip tap on the viewer moves the target
 
   // NO-CAPTURE (Spec §5.8, hard constraint): while the live view is in `input`
   // mode, William is typing his own credentials into Chrome by hand. During
@@ -52,26 +52,26 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
   const tell = (kind: string, label: string): void => { liveView?.announce({ kind, label }); };
 
   const tools: Record<string, Tool> = {
-    navigate: { desc: 'Naviguer l\'onglet principal vers une URL absolue et attendre le chargement du DOM. Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => { await gate(); tell('navigate', `navigate ${a.url}`); return headerLine(await perception.navigate(a.url)); } },
-    state: { desc: 'Renvoyer l\'entete [state] courant de l\'onglet principal : url, titre, pret, et si un dialogue natif est ouvert.', shape: {}, run: async () => headerLine(await perception.state()) },
-    snapshot: { desc: 'Arbre d\'accessibilite elague de l\'onglet principal, chaque element portant une [ref] stable pour agir par reference. Les grands arbres sont ecrits sur disque (un chemin est renvoye). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
-    find: { desc: 'Trouver les elements de l\'onglet principal dont le role/nom correspond a une requete ; renvoie leurs [ref]. Suspendu tant que la vue live est en mode input.', shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
-    read: { desc: 'Lire le texte visible (innerText) de l\'onglet principal, tronque a un budget de tokens (texte complet ecrit sur disque). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
-    screenshot: { desc: 'Capture JPEG de l\'onglet principal (pleine page en option), ecrite sur disque ; renvoie un chemin + resume. Suspendu tant que la vue live est en mode input.', shape: { fullPage: z.boolean().optional() }, run: async (a) => { refuseInputMode(); return (await perception.screenshot(a)).summary; } },
-    act: { desc: 'Agir sur un element de l\'onglet principal par [ref] : click, hover, type (remplir), ou press (touche). Renvoie l\'entete [state] resultant.', shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await gate(); await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
-    fill: { desc: 'Remplir plusieurs champs de l\'onglet principal par [ref] en un appel. Renvoie l\'entete [state] resultant.', shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await gate(); await action.fill(a.fields); return headerLine(await perception.state()); } },
-    scroll: { desc: 'Faire defiler l\'onglet principal vers le haut ou le bas, d\'un nombre de pixels optionnel.', shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await gate(); await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
-    network_requests: { desc: 'Lister les requetes reseau capturees de l\'onglet principal (url, statut, type), filtre par sous-chaine optionnel. Sans les corps.', shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
-    fetch_with_session: { desc: 'Recuperer une URL avec les cookies de la session du navigateur (contexte de l\'onglet principal) ; le corps est ecrit sur disque, un chemin + resume est renvoye.', shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
+    navigate: { desc: 'Naviguer l\'onglet cible vers une URL absolue et attendre le chargement du DOM. Renvoie l\'entete [state] (url, titre, pret).', shape: { url: z.string() }, run: async (a) => { await gate(); tell('navigate', `navigate ${a.url}`); return headerLine(await perception.navigate(a.url)); } },
+    state: { desc: 'Renvoyer l\'entete [state] courant de l\'onglet cible : url, titre, pret, et si un dialogue natif est ouvert.', shape: {}, run: async () => headerLine(await perception.state()) },
+    snapshot: { desc: 'Arbre d\'accessibilite elague de l\'onglet cible, chaque element portant une [ref] stable pour agir par reference. Les grands arbres sont ecrits sur disque (un chemin est renvoye). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const s = await perception.snapshot(a); return `${headerLine(s.state)}\n${s.text}${s.truncated ? `\n[tronqué -> ${s.path}]` : ''}`; } },
+    find: { desc: 'Trouver les elements de l\'onglet cible dont le role/nom correspond a une requete ; renvoie leurs [ref]. Suspendu tant que la vue live est en mode input.', shape: { query: z.string() }, run: async (a) => { refuseInputMode(); const hits = await perception.find(a.query); return hits.map((n) => `[${n.ref}] ${n.role} "${n.name}"`).join('\n') || '(aucun)'; } },
+    read: { desc: 'Lire le texte visible (innerText) de l\'onglet cible, tronque a un budget de tokens (texte complet ecrit sur disque). Suspendu tant que la vue live est en mode input.', shape: { budget: z.number().optional() }, run: async (a) => { refuseInputMode(); const r = await perception.read(a); return `${r.text}${r.truncated ? `\n[tronqué -> ${r.path}]` : ''}`; } },
+    screenshot: { desc: 'Capture JPEG de l\'onglet cible (pleine page en option), ecrite sur disque ; renvoie un chemin + resume. Suspendu tant que la vue live est en mode input.', shape: { fullPage: z.boolean().optional() }, run: async (a) => { refuseInputMode(); return (await perception.screenshot(a)).summary; } },
+    act: { desc: 'Agir sur un element de l\'onglet cible par [ref] : click, hover, type (remplir), ou press (touche). Renvoie l\'entete [state] resultant.', shape: { ref: z.string(), verb: z.enum(['click', 'hover', 'type', 'press']), text: z.string().optional() }, run: async (a) => { await gate(); await action.act(a.ref, a.verb, a.text); return headerLine(await perception.state()); } },
+    fill: { desc: 'Remplir plusieurs champs de l\'onglet cible par [ref] en un appel. Renvoie l\'entete [state] resultant.', shape: { fields: z.array(z.object({ ref: z.string(), value: z.string() })) }, run: async (a) => { await gate(); await action.fill(a.fields); return headerLine(await perception.state()); } },
+    scroll: { desc: 'Faire defiler l\'onglet cible vers le haut ou le bas, d\'un nombre de pixels optionnel.', shape: { dir: z.enum(['up', 'down']), amount: z.number().optional() }, run: async (a) => { await gate(); await action.scroll(a.dir, a.amount); return headerLine(await perception.state()); } },
+    network_requests: { desc: 'Lister les requetes reseau capturees de l\'onglet cible (url, statut, type), filtre par sous-chaine optionnel. Sans les corps.', shape: { filter: z.string().optional() }, run: async (a) => network.requests(a.filter).map((r) => `${r.status} ${r.type} ${r.url}`).join('\n') || '(aucune)' },
+    fetch_with_session: { desc: 'Recuperer une URL avec les cookies de la session du navigateur (contexte de l\'onglet cible) ; le corps est ecrit sur disque, un chemin + resume est renvoye.', shape: { url: z.string() }, run: async (a) => (await network.fetchWithSession(a.url)).summary },
     tabs_list: { desc: `Lister les onglets ouverts (id, url, titre, lequel est actif). ${PRIMARY_TAB_NOTE}`, shape: {}, run: async () => tabsLines(await tabs.list()) },
     tabs_open: { desc: `Ouvrir un nouvel onglet a une URL et le mettre au premier plan ; renvoie son id. ${PRIMARY_TAB_NOTE}`, shape: { url: z.string() }, run: async (a) => { await gate(); tell('tab', `ouvre un onglet ${a.url}`); return `ouvert onglet ${await tabs.open(a.url)}`; } },
-    tabs_close: { desc: 'Fermer un onglet par id (l\'onglet principal ne peut pas etre ferme). Si l\'onglet actif est ferme, le focus revient a l\'onglet principal.', shape: { id: z.number() }, run: async (a) => { await gate(); tell('tab', `ferme l'onglet ${a.id}`); await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
+    tabs_close: { desc: 'Fermer un onglet par id (le dernier onglet ne peut pas etre ferme). Si c\'est l\'onglet cible, la cible passe a son voisin.', shape: { id: z.number() }, run: async (a) => { await gate(); tell('tab', `ferme l'onglet ${a.id}`); await tabs.close(a.id); return `ferme\n${tabsLines(await tabs.list())}`; } },
     tabs_select: { desc: `Mettre un onglet au premier plan par id. NE FAIT QUE cela : ${PRIMARY_TAB_NOTE}`, shape: { id: z.number() }, run: async (a) => { await gate(); tell('tab', `affiche l'onglet ${a.id}`); await tabs.select(a.id); return headerLine(await perception.state()); } },
   };
 
   if (liveView) {
-    tools.live_start = { desc: `Demarrer (ou reutiliser) la vue live et renvoyer un lien signe et expirant que William ouvre pour regarder l\'onglet principal en direct. ttlSec est borne a [30,3600], defaut 900. ${PRIMARY_TAB_NOTE}`, shape: { ttlSec: z.number().int().min(30).max(3600).optional() }, run: async (a) => { await liveView.ensureStarted(); return liveView.url(a.ttlSec); } };
-    tools.live_mode = { desc: 'Basculer la vue live entre "read" (regarder seulement) et "input" (passe-la-main : la souris/le clavier de William sont relayes vers l\'onglet principal). La perception est suspendue en mode input.', shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
+    tools.live_start = { desc: `Demarrer (ou reutiliser) la vue live et renvoyer un lien signe et expirant que William ouvre pour regarder l\'onglet cible en direct. ttlSec est borne a [30,3600], defaut 900. ${PRIMARY_TAB_NOTE}`, shape: { ttlSec: z.number().int().min(30).max(3600).optional() }, run: async (a) => { await liveView.ensureStarted(); return liveView.url(a.ttlSec); } };
+    tools.live_mode = { desc: 'Basculer la vue live entre "read" (regarder seulement) et "input" (passe-la-main : la souris/le clavier de William sont relayes vers l\'onglet cible). La perception est suspendue en mode input.', shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
     tools.live_stop = { desc: 'Arreter la vue live et invalider son lien. Re-appelable : un live_start ulterieur sert un nouveau lien.', shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
   }
 

@@ -263,6 +263,13 @@ Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
   30 s, rejoue l'`initialize` du client vers le nouveau serveur et vide la
   file des appels en attente. Claude Code ne voit jamais la coupure. Sans le
   relais, le remède reste `/mcp` → reconnecter `scry`.
+- **Multi-onglet.** Depuis le 2026-09-12, perception, action et vue live
+  suivent un onglet **cible** que `tabs_select` / `tabs_open` déplacent, et
+  qu'un tap sur une chip du viewer déplace aussi. Après un changement, Claude
+  doit refaire un `snapshot` (les `[ref]` de l'autre onglet ne valent plus).
+  Fermer l'onglet cible bascule sur son voisin ; le dernier onglet ne se
+  ferme pas. Limite connue : une seconde session (mode contrôle) garde sa
+  propre cible, un tap de chip ne bouge que celle de la première.
 - **Corriger la page viewer sans redémarrer.** La page vit dans
   `viewer/index.html` et est relue à chaque requête : après un `git pull`
   sur w-agent, un rechargement de la page suffit, pas besoin de `/mcp`. Seul

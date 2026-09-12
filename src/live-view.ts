@@ -98,13 +98,17 @@ export interface LiveViewLike {
   isPaused(): boolean;
   waitWhilePaused(): Promise<void>;
   stop(): Promise<void>;
+  setTabSelector?(fn: ((id: number) => Promise<void>) | undefined): void;
 }
 
 export class LiveView implements LiveViewLike {
   private server: WebSocketServer | undefined;
   private httpServer: Server | undefined;
   private port = 0;
-  private sessions = new Map<WebSocket, CDPSession>();
+  // Per viewer: its CDP session on the CURRENT target page and its screencast
+  // params, so the cast can be re-attached when the target moves (tabs).
+  private sessions = new Map<WebSocket, { cdp: CDPSession; params: ReturnType<typeof screencastParams> }>();
+  private tabSelector: ((id: number) => Promise<void>) | undefined;
   // Control clients: no screencast, they get mode/pause pushes and may set
   // mode, pause, and announce actions (a follower scry server).
   private controls = new Set<WebSocket>();
@@ -130,7 +134,58 @@ export class LiveView implements LiveViewLike {
    * live view "disconnects" every two minutes of William waiting. 30s
    * leaves a 3x margin; tests shrink it.
    */
-  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number; video?: Partial<VideoOpts> | false }) {}
+  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number; video?: Partial<VideoOpts> | false }) {
+    // The target moved (tabs_select/open/close, or a chip tap): every viewer's
+    // screencast and the shared encoder re-attach to the new page, and the
+    // tab chips update at once.
+    driver.on('page', () => { void this.onTargetChanged(); });
+  }
+
+  /** Wire what a viewer's chip tap does ({t:'tab', id}); server.ts passes tabs.select. */
+  setTabSelector(fn: ((id: number) => Promise<void>) | undefined): void { this.tabSelector = fn; }
+
+  private async onTargetChanged(): Promise<void> {
+    for (const [ws, st] of [...this.sessions]) {
+      if (ws.readyState !== ws.OPEN) continue;
+      await st.cdp.send('Page.stopScreencast').catch(() => {});
+      await st.cdp.detach().catch(() => {});
+      try {
+        st.cdp = await this.attachScreencast(ws, st.params);
+      } catch {
+        ws.close(1011, 'echec du screencast'); // the close handler cleans up
+      }
+    }
+    if (this.video?.isRunning) this.video.restart();
+    this.lastTabsJson = '';
+    void this.pushTabs();
+  }
+
+  /**
+   * Open a CDP session on the current target and start its screencast for
+   * one viewer. The frame listener is registered BEFORE startScreencast (m2).
+   */
+  private async attachScreencast(ws: WebSocket, params: ReturnType<typeof screencastParams>): Promise<CDPSession> {
+    await this.driver.page().bringToFront().catch(() => {});
+    const cdp = await this.driver.cdpSession();
+    cdp.on('Page.screencastFrame', async (f) => {
+      // m2: drop (but still ACK) a frame when the socket is backed up, so a
+      // slow phone link can't grow server memory unbounded or lag minutes
+      // behind. Frame payload: the JPEG, its CSS-pixel dimensions (so the
+      // page maps a click back to CDP coordinates), the mode and the url.
+      // Server->client only — no input is ever echoed here.
+      if (ws.readyState === ws.OPEN && ws.bufferedAmount <= 1024 * 1024) {
+        ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode, url: this.driver.page().url() }));
+      }
+      try { await cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }); } catch { /* tearing down */ }
+    });
+    try {
+      await cdp.send('Page.startScreencast', params);
+    } catch (e) {
+      await cdp.detach().catch(() => {});
+      throw e;
+    }
+    return cdp;
+  }
 
   // ---- Video path (H.264 fMP4 over the same websocket, see video.ts) ----
   private video: VideoStream | undefined;
@@ -411,103 +466,73 @@ export class LiveView implements LiveViewLike {
     ws.on('close', async () => {
       clearInterval(ping);
       closedDuringAttach = true;
-      if (cdp) {
-        await cdp.send('Page.stopScreencast').catch(() => {});
-        await cdp.detach().catch(() => {});
-      }
+      const cur = this.sessions.get(ws)?.cdp ?? cdp; // the target may have moved since attach
       this.sessions.delete(ws);
       this.syncTabsPolling();
+      if (cur) {
+        await cur.send('Page.stopScreencast').catch(() => {});
+        await cur.detach().catch(() => {});
+      }
     });
 
-    // Bring the cast (PRIMARY) tab to the foreground: in headful Chrome a
-    // backgrounded tab stops emitting screencast frames, so the live view would
-    // silently freeze if another tab were in front (M3). Best-effort.
-    await this.driver.page().bringToFront().catch(() => {});
-
+    const params = screencastParams({ w: query.get('w'), h: query.get('h') }, this.opts.quality);
+    const st: { cdp: CDPSession; params: ReturnType<typeof screencastParams> } = { cdp: undefined as unknown as CDPSession, params };
     const wantsVideo = query.get('video') === '1' && this.videoEnabled();
-    if (wantsVideo) {
-      // H.264 path: no per-viewer screencast; the shared encoder feeds this
-      // socket. Input relay, mode/pause/tabs/actions work exactly the same.
-      ws.on('close', () => { void this.unsubscribeVideo(ws); });
-      await this.subscribeVideo(ws);
-      if (closedDuringAttach || this.stopping || !this.server) { await this.unsubscribeVideo(ws); ws.terminate(); return; }
-      cdp = await this.driver.cdpSession().catch(() => undefined); // for input relay only
-      if (!cdp) { ws.close(1011, 'echec cdp'); return; }
-    } else try {
-      cdp = await this.driver.cdpSession();
-      // m2: register the frame listener BEFORE startScreencast. ws dispatches
-      // every protocol frame in a TCP chunk synchronously, so a screencastFrame
-      // arriving in the same chunk as the startScreencast response would be
-      // emitted before the listener exists -> never acked -> the cast stalls
-      // against Chromium's small in-flight cap with no error.
-      cdp.on('Page.screencastFrame', async (f) => {
-        // m2: drop (but still ACK) a frame when the socket is backed up, so a
-        // slow phone link can't grow server memory unbounded or lag minutes
-        // behind. Frame payload: the JPEG, its CSS-pixel dimensions (so the
-        // page maps a click back to CDP coordinates), and the current mode.
-        // Server->client only — no input is ever echoed here.
-        if (ws.readyState === ws.OPEN && ws.bufferedAmount <= 1024 * 1024) {
-          ws.send(JSON.stringify({ data: f.data, w: f.metadata?.deviceWidth, h: f.metadata?.deviceHeight, mode: this.mode, url: this.driver.page().url() }));
-        }
-        try {
-          await cdp!.send('Page.screencastFrameAck', { sessionId: f.sessionId });
-        } catch {
-          // Session may already be tearing down; nothing to do.
-        }
-      });
-      // Frame size follows the viewer's own screen (physical pixels, passed
-      // as ?w=&h= by the page at connect time); see screencastParams.
-      await cdp.send('Page.startScreencast', screencastParams({ w: query.get('w'), h: query.get('h') }, this.opts.quality));
+    try {
+      if (wantsVideo) {
+        // H.264 path: no per-viewer screencast; the shared encoder feeds this
+        // socket. A CDP session is still needed for the input relay.
+        ws.on('close', () => { void this.unsubscribeVideo(ws); });
+        await this.subscribeVideo(ws);
+        await this.driver.page().bringToFront().catch(() => {});
+        st.cdp = await this.driver.cdpSession();
+      } else {
+        // Frame size follows the viewer's own screen (physical pixels, passed
+        // as ?w=&h= by the page at connect time); see screencastParams.
+        st.cdp = await this.attachScreencast(ws, params);
+      }
     } catch {
-      // m1: detach the CDP session on the failure path. A disconnect during
-      // newCDPSession followed by a startScreencast throw would otherwise leave
-      // `cdp` attached forever (the closedDuringAttach cleanup below is skipped
-      // by this return).
-      await cdp?.detach().catch(() => {});
+      // m1: a disconnect during attach must not leave a CDP session behind.
+      await this.unsubscribeVideo(ws).catch(() => {});
       ws.close(1011, 'echec du screencast');
       return;
     }
+    cdp = st.cdp; // for the close handler registered above
 
     if (closedDuringAttach || this.stopping || !this.server) {
-      // The socket closed, or stop() ran, while we were attaching. The close
-      // handler may have fired before `cdp` existed, and an attach that
-      // finishes after stop()'s clear() would otherwise leave a running
-      // screencast nobody tracks (M5). Tear this one down now.
-      if (cdp) {
-        await cdp.send('Page.stopScreencast').catch(() => {});
-        await cdp.detach().catch(() => {});
-      }
+      // The socket closed, or stop() ran, while we were attaching (M5).
+      await st.cdp.send('Page.stopScreencast').catch(() => {});
+      await st.cdp.detach().catch(() => {});
+      await this.unsubscribeVideo(ws).catch(() => {});
       this.sessions.delete(ws);
       ws.terminate();
       return;
     }
 
-    this.sessions.set(ws, cdp);
+    this.sessions.set(ws, st);
     this.syncTabsPolling();
     void this.pushTabs(ws); // this viewer gets the list right away
     if (this.paused) { try { ws.send(JSON.stringify({ paused: true })); } catch { /* dead socket */ } }
 
     // Hand-the-wheel input relay. Wired only once the socket is confirmed open
-    // with `cdp` attached. NO-CAPTURE: besides the `cdp.send` call itself, this
-    // handler never writes the message anywhere — no array push, no
-    // console.log — and the parsed object goes out of scope the instant the
+    // with a CDP session attached. NO-CAPTURE: besides the `cdp.send` call
+    // itself, this handler never writes the message anywhere — no array push,
+    // no console.log — and the parsed object goes out of scope the instant the
     // handler returns.
     //
-    // The one message accepted in EITHER mode is `{t:'view', w, h}`: the
-    // viewer's screen size changed (rotation, window resize), so the
-    // screencast is restarted at the new cap. Only the two numbers are read
-    // from it; restarts are serialised and coalesced (a burst of resize
-    // events ends in a single restart at the last size).
+    // Messages accepted in EITHER mode: {t:'view', w, h} (viewer resized:
+    // restart its screencast at the new cap; restarts are serialised and
+    // coalesced), {t:'mode'}, {t:'pause'}, {t:'tab', id} (chip tap).
     let restarting: Promise<void> = Promise.resolve();
     let wanted: { w: unknown; h: unknown } | undefined;
     const resize = (hint: { w: unknown; h: unknown }) => {
       wanted = hint;
       restarting = restarting.then(async () => {
-        if (!wanted || ws.readyState !== ws.OPEN) return;
-        const params = screencastParams(wanted, this.opts.quality);
+        if (!wanted || ws.readyState !== ws.OPEN || wantsVideo) return;
+        st.params = screencastParams(wanted, this.opts.quality);
         wanted = undefined;
-        await cdp!.send('Page.stopScreencast').catch(() => {});
-        await cdp!.send('Page.startScreencast', params).catch(() => {});
+        await st.cdp.send('Page.stopScreencast').catch(() => {});
+        await st.cdp.send('Page.startScreencast', st.params).catch(() => {});
       });
     };
     ws.on('message', async (raw) => {
@@ -515,15 +540,16 @@ export class LiveView implements LiveViewLike {
         const msg = JSON.parse(raw.toString());
         const { t, ...rest } = msg;
         if (t === 'view') { resize({ w: rest.w, h: rest.h }); return; }
+        if (t === 'tab') { if (Number.isInteger(rest.id) && this.tabSelector) await this.tabSelector(rest.id).catch(() => {}); return; }
         // William takes / gives back control from the page itself. The token
         // holder is William (signed, expiring link), and the same switch is
         // what the live_mode tool does; only the mode string is read.
         if (t === 'mode') { if (rest.mode === 'read' || rest.mode === 'input') this.setMode(rest.mode); return; }
         if (t === 'pause') { this.setPaused(rest.on === true); return; }
         if (this.mode !== 'input') return; // read mode: input is ignored entirely
-        if (t === 'mouse') await cdp!.send('Input.dispatchMouseEvent', rest);
-        else if (t === 'key') await cdp!.send('Input.dispatchKeyEvent', rest);
-        else if (t === 'pinch') await cdp!.send('Input.synthesizePinchGesture', rest);
+        if (t === 'mouse') await st.cdp.send('Input.dispatchMouseEvent', rest);
+        else if (t === 'key') await st.cdp.send('Input.dispatchKeyEvent', rest);
+        else if (t === 'pinch') await st.cdp.send('Input.synthesizePinchGesture', rest);
       } catch {
         // Malformed JSON or a CDP dispatch failure: drop silently. Never
         // log or retain `raw`/`msg` — that is the no-capture guarantee.
@@ -583,9 +609,9 @@ export class LiveView implements LiveViewLike {
     this.server = undefined;
     this.httpServer = undefined;
 
-    for (const [ws, cdp] of this.sessions) {
-      await cdp.send('Page.stopScreencast').catch(() => {});
-      await cdp.detach().catch(() => {});
+    for (const [ws, st] of this.sessions) {
+      await st.cdp.send('Page.stopScreencast').catch(() => {});
+      await st.cdp.detach().catch(() => {});
       // M5: terminate(), not the graceful close() — a dead mobile peer would
       // otherwise hold ws's 30s closeTimeout and stall this whole tool call.
       ws.terminate();

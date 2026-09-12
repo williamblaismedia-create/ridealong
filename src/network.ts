@@ -8,8 +8,17 @@ export class Network {
 
   constructor(private driver: Driver, private store: ArtifactStore) {}
 
+  private attached = new WeakSet<import('playwright').Page>();
+
   start(): void {
-    this.driver.page().on('response', (res) => {
+    this.attach(this.driver.page());
+    this.driver.on('page', (p) => this.attach(p)); // follow the target across tabs
+  }
+
+  private attach(page: import('playwright').Page): void {
+    if (this.attached.has(page)) return;
+    this.attached.add(page);
+    page.on('response', (res) => {
       this.records.push({ url: res.url(), status: res.status(), type: res.request().resourceType() });
     });
   }

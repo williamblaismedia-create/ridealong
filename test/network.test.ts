@@ -19,6 +19,18 @@ beforeAll(async () => {
 afterAll(async () => { await driver.close(); await env.stop(); });
 
 describe('Network', () => {
+  it('keeps recording after the target moves to another tab', async () => {
+    const p = await driver.context().newPage();
+    driver.setPage(p);
+    try {
+      await p.goto(`${env.pageUrl}?t=net`, { waitUntil: 'domcontentloaded' });
+      expect(net.requests('t=net').some((r) => r.status === 200)).toBe(true);
+    } finally {
+      driver.setPage(driver.context().pages()[0]);
+      await p.close();
+    }
+  });
+
   it('records the document request', () => {
     const reqs = net.requests();
     expect(reqs.some((r) => r.url === env.pageUrl && r.status === 200)).toBe(true);
