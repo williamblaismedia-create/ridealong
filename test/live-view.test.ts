@@ -178,9 +178,13 @@ describe('LiveView (integration)', () => {
         reject(new Error('timeout waiting for frame'));
       }, 4000);
       ws.on('message', (data) => {
+        // Non-frame pushes ({tabs}, {mode}, {paused}) can precede the first
+        // frame: only a message carrying `data` is a screencast frame.
+        let m: any; try { m = JSON.parse(data.toString()); } catch { return; }
+        if (!m || typeof m.data !== 'string') return;
         clearInterval(poke);
         clearTimeout(timer);
-        resolve(JSON.parse(data.toString()));
+        resolve(m);
       });
       ws.on('error', (err) => {
         clearInterval(poke);
