@@ -243,6 +243,10 @@ Deux coupures différentes, deux causes, mesurées le 2026-09-12 :
   serveur stdio tout seul. Remède : `/mcp` → reconnecter `scry`. Chaque
   reconnexion relance le serveur, donc la vue live repart aussi (la page
   viewer se raccroche d'elle-même, même lien).
+- **Corriger la page viewer sans redémarrer.** La page vit dans
+  `viewer/index.html` et est relue à chaque requête : après un `git pull`
+  sur w-agent, un rechargement de la page suffit, pas besoin de `/mcp`. Seul
+  un changement du code serveur (`src/*.ts`) demande le reconnect.
 - **`live-view indisponible : listen EADDRINUSE 127.0.0.1:9400`** au
   démarrage : une AUTRE session Claude Code a déjà son serveur scry sur
   w-agent (une par session, toutes sur le même Chrome et le même port). La

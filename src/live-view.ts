@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { CDPSession } from 'playwright';
 import type { Driver } from './driver.js';
@@ -203,8 +206,14 @@ export class LiveView {
       res.end('method not allowed');
       return;
     }
+    const html = loadViewerHtml();
+    if (html === undefined) {
+      res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('page viewer introuvable sur le disque');
+      return;
+    }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end(req.method === 'HEAD' ? undefined : VIEWER_HTML);
+    res.end(req.method === 'HEAD' ? undefined : html);
   }
 
   private async handleConnection(ws: WebSocket, req: import('node:http').IncomingMessage): Promise<void> {
@@ -400,184 +409,34 @@ export class LiveView {
 }
 
 /**
- * The viewer page (C2, Spec §14 "page statique minimale"). Inert and safe to
- * serve unauthenticated: it holds no secret and does nothing until it opens the
- * token-gated websocket. It renders each `{data}` JPEG frame, shows the current
- * mode, and — only in input mode — relays pointer/keyboard events as the
- * `{t:'mouse'|'key', ...}` messages LiveView.handleConnection forwards to CDP
- * Input.dispatch*. It NEVER writes the token or any keystroke to console.*.
+ * The viewer page (C2, Spec §14 "page statique minimale") lives in
+ * viewer/index.html and is read from disk on EVERY request: a fix to the
+ * page takes effect on the next reload, with no server restart — which
+ * matters because the server is spawned per Claude Code session and a
+ * restart means a /mcp reconnect for William. The page is inert and safe to
+ * serve unauthenticated: it holds no secret and does nothing until it opens
+ * the token-gated websocket. See the file for its contract (token from the
+ * fragment + sessionStorage, reconnect, {t:'view'} sizing, input relay).
+ * SCRY_VIEWER_HTML overrides the path (tests, packaging).
  */
-const VIEWER_HTML = `<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Scry — vue live</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #0b0d10; color: #e6e6e6;
-    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  #bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-    background: #14181d; border-bottom: 1px solid #232a31; position: sticky; top: 0; }
-  #dot { width: 9px; height: 9px; border-radius: 50%; background: #555; flex: 0 0 auto; }
-  #dot.on { background: #45d17a; }
-  #mode { font-weight: 600; }
-  #mode.read { color: #7fd1ff; }
-  #mode.input { color: #ffcf5c; }
-  #hint { color: #8a939b; margin-left: auto; }
-  #stage { display: flex; justify-content: center; align-items: flex-start; padding: 8px;
-    height: calc(100% - var(--bar, 41px)); }
-  #screen { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; background: #000;
-    touch-action: none; border-radius: 6px; -webkit-user-select: none; user-select: none; }
-  #kb { position: absolute; opacity: 0; width: 1px; height: 1px; border: 0; padding: 0; }
-</style>
-</head>
-<body>
-  <div id="bar">
-    <span id="dot"></span>
-    <span>mode : <span id="mode" class="read">…</span></span>
-    <span id="hint"></span>
-    <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="capture clavier">
-  </div>
-  <div id="stage"><img id="screen" alt="vue live"></div>
-<script>
-(function () {
-  // Token from the fragment only (never the query string), then scrub it from
-  // history immediately (n4). Never logged. It is ALSO kept in this tab's
-  // sessionStorage: a plain reload (the reflex when a view looks stuck) would
-  // otherwise come back with no token and lock a valid link out as
-  // "lien expire". sessionStorage is per tab, dies with the tab, never
-  // reaches history or any server log.
-  var KEY = 'scry.token';
-  var token = new URLSearchParams((location.hash || '').replace(/^#/, '')).get('token') || '';
+function resolveViewerPath(): string {
+  if (process.env.SCRY_VIEWER_HTML) return process.env.SCRY_VIEWER_HTML;
+  // This module runs from src/ (vitest) or dist/src/ (built): walk up from
+  // the module to the first directory that has viewer/index.html.
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 4; i++) {
+    const candidate = join(dir, 'viewer', 'index.html');
+    if (existsSync(candidate)) return candidate;
+    dir = dirname(dir);
+  }
+  return join(dir, 'viewer', 'index.html'); // will 500 with a clear message
+}
+const VIEWER_PATH = resolveViewerPath();
+
+function loadViewerHtml(): string | undefined {
   try {
-    if (token) sessionStorage.setItem(KEY, token);
-    else token = sessionStorage.getItem(KEY) || '';
-  } catch (e) {}
-  try { history.replaceState(null, document.title, location.pathname + location.search); } catch (e) {}
-
-  var img = document.getElementById('screen');
-  var modeEl = document.getElementById('mode');
-  var dot = document.getElementById('dot');
-  var hint = document.getElementById('hint');
-  var kb = document.getElementById('kb');
-  var frameW = 0, frameH = 0, mode = 'read';
-
-  // Physical pixels this device can show for the frame (stage size x DPR):
-  // the server caps the screencast to exactly that, so a retina desktop
-  // gets full-resolution frames and a phone gets a stream its size.
-  var bar = document.getElementById('bar');
-  function viewSize() {
-    var dpr = window.devicePixelRatio || 1;
-    var barH = bar.offsetHeight || 41;
-    document.documentElement.style.setProperty('--bar', barH + 'px');
-    var w = Math.max(1, window.innerWidth - 16), h = Math.max(1, window.innerHeight - barH - 16);
-    return { w: Math.round(w * dpr), h: Math.round(h * dpr) };
+    return readFileSync(VIEWER_PATH, 'utf8');
+  } catch {
+    return undefined;
   }
-  var vs = viewSize();
-
-  var scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  var ws = null, retryTimer = 0, retryMs = 1000, gaveUp = false;
-
-  // The link drops for ordinary reasons — the phone locks, Safari goes to
-  // the background, the tunnel hiccups, the MCP server restarts. The token
-  // stays valid through all of that, so reconnect on our own with a short
-  // backoff, keeping the last frame on screen. Only an invalid/expired token
-  // (close 1008) is final: William needs a fresh link from live_start.
-  function connect() {
-    clearTimeout(retryTimer);
-    if (gaveUp) return;
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-    var s = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token) + '&w=' + vs.w + '&h=' + vs.h);
-    ws = s;
-    s.onopen = function () { retryMs = 1000; dot.classList.add('on'); hint.textContent = mode === 'input' ? 'vos clics/frappes vont au navigateur' : ''; };
-    s.onerror = function () { /* no payload logged */ };
-    s.onclose = function (ev) {
-      dot.classList.remove('on');
-      if (ev && ev.code === 1008) { gaveUp = true; try { sessionStorage.removeItem(KEY); } catch (e) {} hint.textContent = 'lien expire — demande un nouveau lien'; return; }
-      hint.textContent = 'reconnexion…';
-      retryTimer = setTimeout(connect, retryMs);
-      retryMs = Math.min(10000, retryMs * 2);
-    };
-    s.onmessage = function (ev) {
-      var msg; try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch (e) { return; }
-      if (!msg) return;
-      if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
-      if (typeof msg.data === 'string') {
-        if (msg.w) frameW = msg.w;
-        if (msg.h) frameH = msg.h;
-        img.src = 'data:image/jpeg;base64,' + msg.data;
-      }
-    };
-  }
-  connect();
-  // Back to the foreground (screen unlock, app switch): don't wait for the
-  // backoff, try right away.
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { retryMs = 1000; connect(); } });
-  window.addEventListener('online', function () { retryMs = 1000; connect(); });
-
-  // Rotation / window resize: ask for a new cap (debounced; server coalesces).
-  var resizeTimer = 0;
-  window.addEventListener('resize', function () {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function () {
-      var s = viewSize();
-      if (s.w !== vs.w || s.h !== vs.h) { vs = s; send({ t: 'view', w: s.w, h: s.h }); }
-    }, 300);
-  });
-
-  function setMode(m) {
-    mode = m;
-    modeEl.textContent = m === 'input' ? 'passe-la-main (saisie relayee)' : 'lecture seule';
-    modeEl.className = m;
-    hint.textContent = m === 'input' ? 'vos clics/frappes vont au navigateur' : '';
-  }
-  setMode('read');
-
-  function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
-
-  // Map a client point over the <img> to the page CSS-pixel space CDP uses.
-  function toPage(cx, cy) {
-    var r = img.getBoundingClientRect();
-    if (!r.width || !r.height || !frameW || !frameH) return null;
-    return { x: Math.round((cx - r.left) / r.width * frameW), y: Math.round((cy - r.top) / r.height * frameH) };
-  }
-  function mods(e) { return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0); }
-
-  // Pointer events unify mouse + touch + pen (iOS Safari supports them), so one
-  // set of handlers covers the iPhone. Relayed only in input mode.
-  function mouse(type, e) {
-    if (mode !== 'input') return;
-    var p = toPage(e.clientX, e.clientY);
-    if (p) send({ t: 'mouse', type: type, x: p.x, y: p.y, button: 'left', clickCount: 1, modifiers: mods(e) });
-  }
-  img.addEventListener('pointerdown', function (e) { e.preventDefault(); mouse('mousePressed', e); });
-  img.addEventListener('pointerup', function (e) { e.preventDefault(); mouse('mouseReleased', e); if (mode === 'input') { try { kb.focus(); } catch (x) {} } });
-  img.addEventListener('pointermove', function (e) { if (mode === 'input') { e.preventDefault(); mouse('mouseMoved', e); } });
-
-  // Keyboard, captured at window level (covers a physical keyboard and the
-  // hidden #kb input that only exists to raise the mobile soft keyboard).
-  // A printable key carries its char as text on keyDown — that is what
-  // inserts it (the same shape Puppeteer uses); modifiers with ctrl/meta are
-  // treated as shortcuts (no text). keyUp mirrors it. Nothing is buffered.
-  window.addEventListener('keydown', function (e) {
-    if (mode !== 'input') return;
-    // A printable key carries its char as text; Enter carries a carriage
-    // return so the keyDown actually submits the login form (without text,
-    // CDP's Enter does nothing). Shortcuts (ctrl/meta) carry no text.
-    var text = (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) ? e.key
-             : (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) ? '\\r'
-             : undefined;
-    send({ t: 'key', type: 'keyDown', key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, text: text, modifiers: mods(e) });
-    if (e.key !== 'F5') e.preventDefault();
-  });
-  window.addEventListener('keyup', function (e) {
-    if (mode !== 'input') return;
-    send({ t: 'key', type: 'keyUp', key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, modifiers: mods(e) });
-    e.preventDefault();
-  });
-})();
-</script>
-</body>
-</html>`;
+}
