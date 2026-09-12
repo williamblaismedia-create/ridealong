@@ -4,7 +4,7 @@ labels: [bug]
 body:
   - type: dropdown
     id: mode
-    attributes: { label: How do you run Scry?, options: [Local (scry-local.sh), Docker, Server + relay, Other] }
+    attributes: { label: How do you run Ridealong?, options: [Local (ridealong-local.sh), Docker, Server + relay, Other] }
     validations: { required: true }
   - type: textarea
     id: what

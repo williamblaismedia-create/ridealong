@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. Scry is small on purpose; keep it that way.
+Thanks for looking. Ridealong is small on purpose; keep it that way.
 
 ## Setup
 

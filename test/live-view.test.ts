@@ -692,7 +692,7 @@ describe('LiveView (integration)', () => {
     expect(res.headers.get('content-type')).toMatch(/text\/html/);
     const body = await res.text();
     expect(body).toContain('id="screen"');   // the frame surface
-    expect(body).toContain('Scry');           // the page identifies itself
+    expect(body).toContain('Ridealong');      // the page identifies itself
     // Inert: no real minted token is baked into the served page (it reads one
     // from the fragment at runtime, which never reaches this server). The JS
     // string literal "token=" is fine; a minted token value would not be.

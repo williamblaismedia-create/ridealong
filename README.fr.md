@@ -1,11 +1,11 @@
-# Scry
+# Ridealong
 
 *English: [README.md](README.md)*
 
 ![démo](docs/demo.gif)
 
 Un navigateur piloté par Claude, que vous pouvez **regarder en direct** et
-**reprendre en main** à tout moment. Scry est un serveur MCP (stdio) qui
+**reprendre en main** à tout moment. Ridealong est un serveur MCP (stdio) qui
 conduit un vrai Google Chrome par CDP, et une **vue live** : page web avec
 flux vidéo H.264 (ou images JPEG), curseur de Claude, journal des actions,
 pause, mode Manuel (vos clics, clavier et défilement vont dans Chrome),
@@ -16,12 +16,12 @@ onglets, choix de résolution.
 **Sur la machine que Claude pilote** (le plus simple, aucune infrastructure) :
 
 ```
-git clone <ce dépôt> && cd scry && npm ci && npm run build
-claude mcp add scry -- "$PWD/scripts/scry-local.sh"
+git clone https://github.com/williamblaismedia-create/ridealong && cd ridealong && npm ci && npm run build
+claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"
 ```
 
 Le lanceur démarre Chrome avec son port de debug, génère un secret dans
-`~/scry-donnees/scry.env` la première fois, puis lance le serveur. Dans
+`~/ridealong-data/ridealong.env` la première fois, puis lance le serveur. Dans
 Claude : « ouvre timeliner.io et donne-moi la vue live » → un lien
 `http://127.0.0.1:9400/#token=…` à ouvrir dans un navigateur. `ffmpeg` sur
 la machine active la vidéo (NVENC, VideoToolbox sur Mac, sinon logiciel) ;
@@ -43,8 +43,8 @@ live déplace aussi.
 
 ## Barre d'état Claude Code
 
-Avec le relais local, `scripts/scry-statusline.sh` affiche le lien de la vue
-live dans la barre d'état pendant qu'une session Scry tourne (`statusLine`
+Avec le relais local, `scripts/ridealong-statusline.sh` affiche le lien de la vue
+live dans la barre d'état pendant qu'une session Ridealong tourne (`statusLine`
 dans `~/.claude/settings.json`).
 
 ## Garanties
@@ -65,3 +65,6 @@ Voir `src/config.ts` : `SCRY_CDP_URL`, `SCRY_DATA_DIR`, `SCRY_VIEWPORT_*`,
 ## Développement
 
 `npm test` (Vitest, lance un Chromium de test), `npm run build`.
+
+
+*Ridealong s'appelait Scry jusqu'au 2026-09-12 : les variables `SCRY_*`, les scripts `scry-*` et les chemins existants continuent de fonctionner.*

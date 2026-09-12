@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="dark">
-<title>Scry — vue live</title>
+<title>Ridealong — vue live</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,700;1,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -42,7 +42,7 @@
 
   /* Barre : etiquette mono a gauche, action en pilule a droite. */
   /* Le notch : une capsule accrochee au bord superieur, coins arrondis vers
-     le bas, flottante au-dessus de l'ecran. Point | SCRY | toggle. */
+     le bas, flottante au-dessus de l'ecran. Point | RIDEALONG | toggle. */
   #bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 2; width: max-content; max-width: calc(100vw - 16px);
     display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 18px;
     min-height: var(--bar); padding: 10px 14px 12px 20px;
@@ -57,8 +57,8 @@
     transition: opacity var(--dur) var(--ease-out); }
   #hint:empty { opacity: 0; }
 
-  /* Le mot-symbole : SCRY, capitales italiques serrees, creme sur noir chaud. */
-  #wordmark { font: italic 800 20px/1 var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase;
+  /* Le mot-symbole : RIDEALONG, capitales italiques serrees, creme sur noir chaud. */
+  #wordmark { font: italic 800 18px/1 var(--font-sans); letter-spacing: 0.05em; text-transform: uppercase;
     color: var(--warm-25); text-align: center; padding: 0; user-select: none; -webkit-user-select: none; }
   /* La marque : un orbe. Anneau creme, reflet, pupille terracotta. La
      pupille est l'indicateur live : eteinte hors ligne, un leger battement
@@ -290,7 +290,7 @@
         <circle id="dot" cx="12" cy="12" r="3.1"/>
       </svg>
     </div>
-    <div id="wordmark">Scry</div>
+    <div id="wordmark">Ridealong</div>
     <div id="right">
       <button id="pause" type="button" title="Mettre Claude en pause" aria-label="Mettre Claude en pause" disabled>
         <svg class="pause" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1.5" width="3.6" height="11" rx="1"/><rect x="8.4" y="1.5" width="3.6" height="11" rx="1"/></svg>
@@ -617,7 +617,7 @@
     } else if (img.src && img.src.indexOf('data:image/jpeg') === 0) src = img.src;
     if (!src) return;
     var a = document.createElement('a');
-    a.href = src; a.download = 'scry-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.jpg';
+    a.href = src; a.download = 'ridealong-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.jpg';
     document.body.appendChild(a); a.click(); a.remove();
   });
   // Plein ecran : le cadre seul, sans notch ; le flux est redemande a la

@@ -5,7 +5,7 @@ import { Driver } from '../src/driver.js';
 import { LiveView, mintToken } from '../src/live-view.js';
 import { RemoteLiveView } from '../src/live-view-remote.js';
 
-// Two Claude Code sessions -> two scry servers on ONE Chrome. Only one can
+// Two Claude Code sessions -> two ridealong servers on ONE Chrome. Only one can
 // bind the live-view port; the other must not lose its live_* tools. The
 // follower attaches to the owner as a CONTROL client (its own token flavour,
 // no screencast) and drives mode / pause / announce through it, minting

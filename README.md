@@ -1,34 +1,34 @@
 <p align="center">
-  <img src="viewer/brand/scry-mark.svg" width="88" alt="Scry">
+  <img src="viewer/brand/ridealong-mark.svg" width="88" alt="Ridealong">
 </p>
 
-<h1 align="center"><em>SCRY</em></h1>
+<h1 align="center"><em>RIDEALONG</em></h1>
 
 <p align="center">
-  <strong>A browser your AI drives — that you can watch live and take over at any moment.</strong><br>
+  <strong>A browser your AI drives. Ride along, grab the wheel anytime.</strong><br>
   MCP server for Claude Code · real Google Chrome · live H.264 view · human-in-the-loop by design
 </p>
 
 <p align="center">
-  <a href="https://github.com/williamblaismedia-create/scry/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/williamblaismedia-create/scry/ci.yml?label=tests&style=flat-square"></a>
+  <a href="https://github.com/williamblaismedia-create/ridealong/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/williamblaismedia-create/ridealong/ci.yml?label=tests&style=flat-square"></a>
   <img alt="MIT" src="https://img.shields.io/badge/license-MIT-DA7756?style=flat-square">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-1A1714?style=flat-square">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-1A1714?style=flat-square">
   <img alt="tests" src="https://img.shields.io/badge/vitest-131%20passing-3E7D5A?style=flat-square">
 </p>
 
-<p align="center"><img src="docs/demo.gif" width="880" alt="Scry live view: Claude's cursor, the action journal, then Manual mode"></p>
+<p align="center"><img src="docs/demo.gif" width="880" alt="Ridealong live view: Claude's cursor, the action journal, then Manual mode"></p>
 
 ---
 
-Every browser MCP lets an agent click around in the dark. **Scry turns the
-lights on.** Claude drives a real Chrome; you open one link and see exactly
+Every browser MCP lets an agent click around in the dark. **Ridealong puts you
+in the passenger seat.** Claude drives a real Chrome; you open one link and see exactly
 what it sees, where it clicks, what it typed — and when it hits a login, a
 CAPTCHA or a payment, you **take the wheel** from your phone, then hand it back.
 
-## Why Scry
+## Why Ridealong
 
-| | Typical browser MCP | **Scry** |
+| | Typical browser MCP | **Ridealong** |
 |---|---|---|
 | Browser | headless Chromium | **real Google Chrome** (codecs, extensions, your profile) |
 | Watch the agent | screenshots on request | **live stream**, GPU-encoded H.264, ~150 ms behind |
@@ -43,8 +43,8 @@ CAPTCHA or a payment, you **take the wheel** from your phone, then hand it back.
 **On the machine Claude drives** — nothing to host:
 
 ```bash
-git clone https://github.com/williamblaismedia-create/scry && cd scry && npm ci && npm run build
-claude mcp add scry -- "$PWD/scripts/scry-local.sh"
+git clone https://github.com/williamblaismedia-create/ridealong && cd ridealong && npm ci && npm run build
+claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"
 ```
 
 Then, in Claude Code: *"open timeliner.io and give me the live view"*.
@@ -54,7 +54,7 @@ device and the bare address works for 30 days — bookmark it.
 **In Docker** (Chrome under Xvfb, ffmpeg, persistent profile):
 
 ```bash
-docker build -t scry . && claude mcp add scry -- docker run -i --rm -p 9400:9400 -v scry-data:/data scry
+docker build -t ridealong . && claude mcp add ridealong -- docker run -i --rm -p 9400:9400 -v ridealong-data:/data ridealong
 ```
 
 **On an always-on server** with an NVIDIA GPU, a Cloudflare tunnel and a
@@ -95,7 +95,7 @@ deployed is what Claude sees.
 ## How it works
 
 ```
-Claude Code ──stdio──▶ scry (MCP) ──CDP──▶ Google Chrome
+Claude Code ──stdio──▶ ridealong (MCP) ──CDP──▶ Google Chrome
                           │
                           └─ live view ── ws ──▶ your browser / phone
                               JPEG frames, or CDP screencast → ffmpeg (GPU) → fMP4 → MSE
@@ -104,7 +104,7 @@ Claude Code ──stdio──▶ scry (MCP) ──CDP──▶ Google Chrome
 
 Two Claude Code sessions on one Chrome? The second follows the first as a
 control client and promotes itself if the first goes away. A local relay
-(`scripts/scry-mcp-relay.mjs`) keeps the MCP session alive across a dead SSH
+(`scripts/ridealong-mcp-relay.mjs`) keeps the MCP session alive across a dead SSH
 link by replaying the handshake.
 
 ## Guarantees
@@ -113,7 +113,7 @@ link by replaying the handshake.
   retained; perception tools refuse to run while you have control; password
   fields never expose values in snapshots. A test suite pins this down.
 - **Signed, expiring links** (HMAC, 30 s – 1 h). Device tokens (30 days) live
-  only in your browser. Rotate `SCRY_LIVE_SECRET` to revoke everything.
+  only in your browser. Rotate `RIDEALONG_LIVE_SECRET` to revoke everything.
 - **Loopback by default.** The live view listens on 127.0.0.1; you choose
   how to expose it.
 
@@ -123,7 +123,7 @@ link by replaying the handshake.
 - [ ] Adaptive bitrate for weak mobile links
 - [ ] Profiles: one Chrome context per client / task, incognito
 - [ ] Annotated screenshots (refs drawn on the image)
-- [ ] `npx scry-mcp`
+- [ ] `npx ridealong-mcp`
 
 ## Contributing
 

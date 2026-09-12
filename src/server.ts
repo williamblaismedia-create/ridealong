@@ -102,7 +102,7 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
     return items.length ? `${out}\n${items.map((l) => `[william] ${l}`).join('\n')}` : out;
   };
 
-  const server = new McpServer({ name: 'scry', version: '0.1.0' });
+  const server = new McpServer({ name: 'ridealong', version: '0.1.0' });
   for (const [name, t] of Object.entries(tools)) {
     server.registerTool(name, { description: t.desc, inputSchema: t.shape }, async (args: any) => ({ content: [{ type: 'text', text: await run(name, args) }] }));
   }
@@ -139,15 +139,15 @@ export async function main(): Promise<void> {
     try {
       // Owner of the live-view port, or follower of the session that owns it —
       // and promoted to owner if that session goes away (see LiveViewSlot).
-      liveView = await LiveViewSlot.create(driver, { secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video, bind: cfg.liveBind }, (m) => console.error('[scry] ' + m));
+      liveView = await LiveViewSlot.create(driver, { secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video, bind: cfg.liveBind }, (m) => console.error('[ridealong] ' + m));
     } catch (e) {
       // Any other failure degrades to a core server without live_* tools.
       // Never log the secret value, only the error.
-      console.error('[scry] live-view indisponible : ' + (e as Error).message);
+      console.error('[ridealong] live-view indisponible : ' + (e as Error).message);
       liveView = undefined;
     }
   } else {
-    console.error('[scry] SCRY_LIVE_SECRET absent : vue live desactivee.');
+    console.error('[ridealong] SCRY_LIVE_SECRET absent : vue live desactivee.');
   }
 
   liveView?.setViewportSink?.(async (v) => { mkdirSync(cfg.dataDir, { recursive: true }); writeFileSync(viewportFile, JSON.stringify(v)); });

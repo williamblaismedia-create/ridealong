@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Conteneur Scry : Xvfb + Chrome (profil persistant dans /data), puis le serveur MCP sur stdio.
+# Conteneur Ridealong : Xvfb + Chrome (profil persistant dans /data), puis le serveur MCP sur stdio.
 # Rien sur stdout sauf le JSON-RPC.
 set -euo pipefail
 mkdir -p "$SCRY_DATA_DIR/profile"
-if [ ! -f "$SCRY_DATA_DIR/scry.env" ]; then
-  printf 'SCRY_LIVE_SECRET=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" > "$SCRY_DATA_DIR/scry.env"
-  echo "scry: secret genere dans $SCRY_DATA_DIR/scry.env" >&2
+if [ ! -f "$SCRY_DATA_DIR/ridealong.env" ]; then
+  printf 'SCRY_LIVE_SECRET=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" > "$SCRY_DATA_DIR/ridealong.env"
+  echo "ridealong: secret genere dans $SCRY_DATA_DIR/ridealong.env" >&2
 fi
-set -a; . "$SCRY_DATA_DIR/scry.env"; set +a
+set -a; . "$SCRY_DATA_DIR/ridealong.env"; set +a
 Xvfb "$DISPLAY" -screen 0 "${SCRY_VIEWPORT_WIDTH}x${SCRY_VIEWPORT_HEIGHT}x24" -nolisten tcp >/dev/null 2>&1 &
 for _ in $(seq 1 40); do [ -S "/tmp/.X11-unix/X${DISPLAY#:}" ] && break; sleep 0.1; done
 google-chrome --no-sandbox --disable-dev-shm-usage --user-data-dir="$SCRY_DATA_DIR/profile" --password-store=basic \

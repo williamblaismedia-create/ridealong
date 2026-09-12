@@ -7,7 +7,7 @@ export interface SlotOpts { secret: string; port: number; publicUrl?: string; qu
 
 /**
  * One live view per Chrome, whoever is running. The slot tries to OWN the
- * port; if another scry server already does, it FOLLOWS it (control client).
+ * port; if another ridealong server already does, it FOLLOWS it (control client).
  * When the owner goes away — its session ended, or it was a zombie that got
  * killed — the follower promotes itself: it binds the port and becomes the
  * owner, so the links it hands out keep working. If yet another server won

@@ -43,7 +43,7 @@ export function verifyToken(secret: string, token: string): boolean {
 }
 
 /**
- * Control clients (a second scry server on the same Chrome, see
+ * Control clients (a second ridealong server on the same Chrome, see
  * live-view-remote.ts) authenticate with a DIFFERENT token flavour, keyed
  * on `${secret}:control`: a viewer link can never act as a control client
  * and vice versa.
@@ -133,7 +133,7 @@ export class LiveView implements LiveViewLike {
   private inbox: string[] = [];
   private inboxWaiters: Array<() => void> = [];
   // Control clients: no screencast, they get mode/pause pushes and may set
-  // mode, pause, and announce actions (a follower scry server).
+  // mode, pause, and announce actions (a follower ridealong server).
   private controls = new Set<WebSocket>();
   private mode: 'read' | 'input' = 'read';
   // Set for the duration of stop(): an attach that finishes after clear() must
@@ -679,7 +679,7 @@ export class LiveView implements LiveViewLike {
   }
 
   /**
-   * A follower scry server. Receives every push viewers get (mode, paused,
+   * A follower ridealong server. Receives every push viewers get (mode, paused,
    * action, tabs) minus frames; may set mode, pause, and announce. Its
    * messages carry no input and are not retained.
    */

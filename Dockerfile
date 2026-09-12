@@ -1,6 +1,6 @@
-# Scry — mode serveur en conteneur : Chrome sous Xvfb, ffmpeg (libx264), serveur MCP stdio.
-#   docker build -t scry .
-#   claude mcp add scry -- docker run -i --rm -p 9400:9400 -v scry-data:/data scry
+# Ridealong — mode serveur en conteneur : Chrome sous Xvfb, ffmpeg (libx264), serveur MCP stdio.
+#   docker build -t ridealong .
+#   claude mcp add ridealong -- docker run -i --rm -p 9400:9400 -v ridealong-data:/data ridealong
 # La vue live est sur http://127.0.0.1:9400 (mettre SCRY_LIVE_PUBLIC_URL si exposée ailleurs).
 # GPU NVIDIA (encodage NVENC) : docker run --gpus all -e SCRY_VIDEO_ENCODER=h264_nvenc ... (runtime nvidia requis côté hôte).
 FROM node:22-bookworm-slim

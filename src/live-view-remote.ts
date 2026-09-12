@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { mintToken, controlSecret, type LiveViewLike, type Verdict } from './live-view.js';
 
 /**
- * Follower live view. Two Claude Code sessions each spawn a scry server on
+ * Follower live view. Two Claude Code sessions each spawn a ridealong server on
  * the same Chrome; only one can bind the live-view port. Instead of losing
  * its live_* tools (EADDRINUSE), the second attaches to the owner as a
  * CONTROL client over loopback: it mints viewer links itself (same secret,

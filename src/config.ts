@@ -55,10 +55,20 @@ function realSecret(v: string | undefined): string | undefined {
   return !s || s === 'CHANGE_ME' ? undefined : s;
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+/** RIDEALONG_* is the public name of every variable; SCRY_* (the original name) keeps working. */
+function withAliases(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...env };
+  for (const [k, v] of Object.entries(env)) {
+    if (k.startsWith('RIDEALONG_') && v !== undefined) out['SCRY_' + k.slice('RIDEALONG_'.length)] = v;
+  }
+  return out;
+}
+
+export function loadConfig(rawEnv: NodeJS.ProcessEnv = process.env): Config {
+  const env = withAliases(rawEnv);
   return {
     cdpUrl: env.SCRY_CDP_URL ?? 'http://127.0.0.1:9222',
-    dataDir: expandHome(env.SCRY_DATA_DIR ?? '~/scry-donnees'),
+    dataDir: expandHome(env.SCRY_DATA_DIR ?? '~/ridealong-data'),
     viewport: {
       width: intOr(env.SCRY_VIEWPORT_WIDTH, 1440),
       height: intOr(env.SCRY_VIEWPORT_HEIGHT, 900),

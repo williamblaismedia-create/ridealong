@@ -1,6 +1,6 @@
 # Security
 
-Scry relays a human's keyboard into a browser and streams that browser's
+Ridealong relays a human's keyboard into a browser and streams that browser's
 screen. Treat it accordingly.
 
 ## Report a vulnerability
@@ -22,4 +22,4 @@ an answer within 72 hours.
 - Manual-mode input is forwarded to CDP and never retained, logged, or
   exposed to the model. Perception tools are refused while Manual is on.
 - `fetch_with_session` and `act` run with the browser's cookies: whoever
-  drives Scry drives your logged-in sessions. Use a dedicated Chrome profile.
+  drives Ridealong drives your logged-in sessions. Use a dedicated Chrome profile.
