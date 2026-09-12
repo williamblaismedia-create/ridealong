@@ -9,6 +9,8 @@ export interface Config {
   /** SCRY_LIVE_SECRET. Required for the live view; no default is invented — unset means live-view stays off. */
   secret: string | undefined;
   liveViewPort: number;
+  /** SCRY_LIVE_BIND: interface for the live-view server. Default loopback (a tunnel/relay fronts it); 0.0.0.0 in Docker. */
+  liveBind: string;
   /**
    * SCRY_LIVE_PUBLIC_URL. Public base (e.g. https://scry.wautomatisations.com)
    * the live link is minted from so it works behind the Cloudflare tunnel.
@@ -65,6 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     readBudgetChars: intOr(env.SCRY_READ_BUDGET_CHARS, 8000),
     secret: realSecret(env.SCRY_LIVE_SECRET),
     liveViewPort: intOr(env.SCRY_LIVE_PORT, 9400),
+    liveBind: env.SCRY_LIVE_BIND || '127.0.0.1',
     livePublicUrl: env.SCRY_LIVE_PUBLIC_URL,
     liveQuality: Math.min(100, Math.max(1, intOr(env.SCRY_LIVE_QUALITY, 85))),
     browserCache: (env.SCRY_BROWSER_CACHE ?? 'off').toLowerCase() === 'on',

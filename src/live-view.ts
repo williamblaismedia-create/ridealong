@@ -157,7 +157,7 @@ export class LiveView implements LiveViewLike {
    * live view "disconnects" every two minutes of William waiting. 30s
    * leaves a 3x margin; tests shrink it.
    */
-  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number; video?: Partial<VideoOpts> | false }) {
+  constructor(private driver: Driver, private opts: { secret: string; publicUrl?: string; quality?: number; pingMs?: number; video?: Partial<VideoOpts> | false; bind?: string }) {
     // The target moved (tabs_select/open/close, or a chip tap): every viewer's
     // screencast and the shared encoder re-attach to the new page, and the
     // tab chips update at once.
@@ -500,7 +500,7 @@ export class LiveView implements LiveViewLike {
       httpServer.once('listening', onListening);
       httpServer.once('error', onError);
       wss.once('error', onError);
-      httpServer.listen(bindPort, '127.0.0.1');
+      httpServer.listen(bindPort, this.opts.bind ?? '127.0.0.1');
     });
 
     // Running phase: keep a benign server-level error handler so a stray late

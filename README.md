@@ -1,5 +1,9 @@
 # Scry
 
+*English: [README.en.md](README.en.md)*
+
+![démo](docs/demo.gif)
+
 Un navigateur piloté par Claude, que vous pouvez **regarder en direct** et
 **reprendre en main** à tout moment. Scry est un serveur MCP (stdio) qui
 conduit un vrai Google Chrome par CDP, et une **vue live** : page web avec
@@ -30,11 +34,18 @@ relais SSH depuis le Mac) : voir `docs/DEPLOIEMENT-W-AGENT.md`.
 
 `navigate`, `state`, `snapshot`, `find`, `read`, `screenshot`, `act`, `fill`,
 `scroll`, `network_requests`, `fetch_with_session`, `tabs_list`, `tabs_open`,
-`tabs_close`, `tabs_select`, `live_start`, `live_mode`, `live_stop`.
+`tabs_close`, `tabs_select`, `reload`, `diff`, `console_errors`, `live_start`,
+`live_mode`, `live_stop`, `ask_approval`, `inbox`.
 
 Perception, action et vue live suivent un **onglet cible** que
 `tabs_select`/`tabs_open` déplacent, ou qu'un tap sur un onglet de la vue
 live déplace aussi.
+
+## Barre d'état Claude Code
+
+Avec le relais local, `scripts/scry-statusline.sh` affiche le lien de la vue
+live dans la barre d'état pendant qu'une session Scry tourne (`statusLine`
+dans `~/.claude/settings.json`).
 
 ## Garanties
 

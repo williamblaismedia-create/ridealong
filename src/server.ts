@@ -139,7 +139,7 @@ export async function main(): Promise<void> {
     try {
       // Owner of the live-view port, or follower of the session that owns it —
       // and promoted to owner if that session goes away (see LiveViewSlot).
-      liveView = await LiveViewSlot.create(driver, { secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video }, (m) => console.error('[scry] ' + m));
+      liveView = await LiveViewSlot.create(driver, { secret: cfg.secret, port: cfg.liveViewPort, publicUrl: cfg.livePublicUrl, quality: cfg.liveQuality, video: cfg.video, bind: cfg.liveBind }, (m) => console.error('[scry] ' + m));
     } catch (e) {
       // Any other failure degrades to a core server without live_* tools.
       // Never log the secret value, only the error.

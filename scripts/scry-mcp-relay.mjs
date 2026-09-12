@@ -23,6 +23,19 @@
  * line; SCRY_RELAY_HOST overrides the host only.
  */
 import { spawn } from 'node:child_process';
+import { writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+// Marker for the Claude Code status line (~/.claude/scry-statusline.sh):
+// present while this relay has a live scry session, removed on exit.
+const MARKER = process.env.SCRY_RELAY_MARKER ?? join(homedir(), '.claude', 'scry-live.json');
+function mark(on) {
+  try {
+    if (on) { mkdirSync(join(homedir(), '.claude'), { recursive: true }); writeFileSync(MARKER, JSON.stringify({ pid: process.pid, at: Date.now(), host: HOST })); }
+    else unlinkSync(MARKER);
+  } catch { /* cosmetic */ }
+}
 
 const HOST = process.env.SCRY_RELAY_HOST ?? 'will@w-agent';
 const REMOTE = process.env.SCRY_RELAY_REMOTE ?? '/home/will/scry/scripts/scry-mcp.sh';
@@ -51,6 +64,7 @@ function startChild() {
   childBuf = '';
   child = spawn(CMD, { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
   const c = child;
+  mark(true);
   c.stderr.on('data', (d) => process.stderr.write(d));
   c.stdout.on('data', (d) => onChildData(c, d));
   c.on('exit', (code, signal) => {
@@ -133,6 +147,7 @@ for (const s of ['SIGTERM', 'SIGHUP', 'SIGINT']) process.on(s, () => shutdown())
 function shutdown() {
   if (closing) return;
   closing = true;
+  mark(false);
   try { child?.stdin.end(); } catch { /* ignore */ }
   const c = child;
   setTimeout(() => { try { c?.kill('SIGTERM'); } catch { /* ignore */ } process.exit(0); }, 500);

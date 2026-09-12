@@ -3,7 +3,7 @@ import { RemoteLiveView } from './live-view-remote.js';
 import type { Driver } from './driver.js';
 import type { VideoOpts } from './video.js';
 
-export interface SlotOpts { secret: string; port: number; publicUrl?: string; quality?: number; video?: Partial<VideoOpts> | false }
+export interface SlotOpts { secret: string; port: number; publicUrl?: string; quality?: number; video?: Partial<VideoOpts> | false; bind?: string }
 
 /**
  * One live view per Chrome, whoever is running. The slot tries to OWN the
@@ -32,7 +32,7 @@ export class LiveViewSlot implements LiveViewLike {
 
   /** Bind the port as owner; on EADDRINUSE follow (or keep following). */
   private async tryOwn(log: (msg: string) => void, initial = false): Promise<boolean> {
-    const owner = new LiveView(this.driver, { secret: this.opts.secret, publicUrl: this.opts.publicUrl, quality: this.opts.quality, video: this.opts.video });
+    const owner = new LiveView(this.driver, { secret: this.opts.secret, publicUrl: this.opts.publicUrl, quality: this.opts.quality, video: this.opts.video, bind: this.opts.bind });
     try {
       await owner.start(this.opts.port);
     } catch (e) {
