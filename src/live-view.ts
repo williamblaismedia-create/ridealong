@@ -49,6 +49,11 @@ export function verifyToken(secret: string, token: string): boolean {
  * and vice versa.
  */
 export function controlSecret(secret: string): string { return `${secret}:control`; }
+/** Device tokens (30 days, stored by the viewer page) are keyed on `${secret}:device`. */
+export function deviceSecret(secret: string): string { return `${secret}:device`; }
+export const DEVICE_TTL_SEC = 30 * 24 * 3600;
+
+export type Verdict = 'approved' | 'denied' | 'timeout' | 'no-viewer';
 
 /** Bounds for a viewer-requested frame size (physical pixels). */
 const MIN_FRAME_PX = 320;
@@ -100,6 +105,10 @@ export interface LiveViewLike {
   stop(): Promise<void>;
   setTabSelector?(fn: ((id: number) => Promise<void>) | undefined): void;
   setViewportSink?(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void;
+  /** Ask William on the viewer; resolves with his answer, a timeout, or 'no-viewer'. */
+  ask(question: string, opts?: { timeoutMs?: number }): Promise<Verdict>;
+  /** True when at least one viewer page is attached. */
+  hasViewers(): boolean;
 }
 
 export class LiveView implements LiveViewLike {
@@ -111,6 +120,8 @@ export class LiveView implements LiveViewLike {
   private sessions = new Map<WebSocket, { cdp: CDPSession; params: ReturnType<typeof screencastParams> }>();
   private tabSelector: ((id: number) => Promise<void>) | undefined;
   private viewportSink: ((v: { width: number; height: number }) => Promise<void>) | undefined;
+  private askSeq = 0;
+  private asks = new Map<number, (v: Verdict) => void>();
   // Control clients: no screencast, they get mode/pause pushes and may set
   // mode, pause, and announce actions (a follower scry server).
   private controls = new Set<WebSocket>();
@@ -141,6 +152,36 @@ export class LiveView implements LiveViewLike {
     // screencast and the shared encoder re-attach to the new page, and the
     // tab chips update at once.
     driver.on('page', () => { void this.onTargetChanged(); });
+  }
+
+  hasViewers(): boolean { return this.sessions.size > 0; }
+
+  /**
+   * Approval gate. The question goes to every viewer as {ask:{id,question}};
+   * the first {t:'answer'} wins; everyone is then told {ask:{id,done,ok}}.
+   * Nothing but the question text and the verdict is kept.
+   */
+  ask(question: string, opts: { timeoutMs?: number } = {}): Promise<Verdict> {
+    if (!this.hasViewers()) return Promise.resolve('no-viewer');
+    const id = ++this.askSeq;
+    const timeoutMs = opts.timeoutMs ?? 300_000;
+    return new Promise<Verdict>((resolve) => {
+      const timer = setTimeout(() => finish('timeout'), timeoutMs);
+      const finish = (v: Verdict) => {
+        if (!this.asks.has(id)) return;
+        this.asks.delete(id);
+        clearTimeout(timer);
+        this.broadcast({ ask: { id, done: true, ok: v === 'approved' } });
+        resolve(v);
+      };
+      this.asks.set(id, finish);
+      this.broadcast({ ask: { id, question: String(question).slice(0, 300), at: Date.now() } });
+    });
+  }
+
+  private answer(id: unknown, ok: unknown): void {
+    if (typeof id !== 'number') return;
+    this.asks.get(id)?.(ok === true ? 'approved' : 'denied');
   }
 
   /** Where a viewer-chosen resolution is persisted (server.ts writes viewport.json). */
@@ -467,9 +508,16 @@ export class LiveView implements LiveViewLike {
       return;
     }
     const token = query.get('token') ?? '';
-    if (!verifyToken(this.opts.secret, token)) {
+    const device = query.get('device');
+    const byDevice = device !== null && verifyToken(deviceSecret(this.opts.secret), device);
+    if (!byDevice && !verifyToken(this.opts.secret, token)) {
       ws.close(1008, 'jeton invalide');
       return;
+    }
+    if (!byDevice) {
+      // Pairing: a valid short link leaves a 30-day device token in this
+      // browser, so the bare url works next time (bookmark, home screen).
+      try { ws.send(JSON.stringify({ device: mintToken(deviceSecret(this.opts.secret), DEVICE_TTL_SEC) })); } catch { /* dead */ }
     }
 
     // `cdp` starts unset. Register the close handler NOW, before the CDP
@@ -567,6 +615,7 @@ export class LiveView implements LiveViewLike {
         if (t === 'view') { resize({ w: rest.w, h: rest.h }); return; }
         if (t === 'tab') { if (Number.isInteger(rest.id) && this.tabSelector) await this.tabSelector(rest.id).catch(() => {}); return; }
         if (t === 'viewport') { await this.setViewport(rest.w, rest.h); return; }
+        if (t === 'answer') { this.answer(rest.id, rest.ok); return; }
         // William takes / gives back control from the page itself. The token
         // holder is William (signed, expiring link), and the same switch is
         // what the live_mode tool does; only the mode string is read.
@@ -599,6 +648,11 @@ export class LiveView implements LiveViewLike {
         if (t === 'mode') { if (rest.mode === 'read' || rest.mode === 'input') this.setMode(rest.mode); }
         else if (t === 'pause') this.setPaused(rest.on === true);
         else if (t === 'announce' && typeof rest.label === 'string') this.announce({ kind: String(rest.kind ?? 'action'), label: rest.label, x: rest.x, y: rest.y });
+        else if (t === 'ask' && typeof rest.question === 'string') {
+          // A follower asks through us; answer back to it only.
+          void this.ask(rest.question, { timeoutMs: typeof rest.timeoutMs === 'number' ? rest.timeoutMs : undefined })
+            .then((v) => { if (ws.readyState === ws.OPEN) { try { ws.send(JSON.stringify({ answer: { ref: rest.ref, verdict: v } })); } catch { /* gone */ } } });
+        }
       } catch { /* malformed: drop */ }
     });
   }
@@ -645,6 +699,7 @@ export class LiveView implements LiveViewLike {
     this.sessions.clear();
     this.syncTabsPolling();
     this.setPaused(false); // never leave a tool call hanging on a gone viewer
+    for (const finish of [...this.asks.values()]) finish('timeout');
 
     for (const c of this.controls) c.terminate();
     this.controls.clear();

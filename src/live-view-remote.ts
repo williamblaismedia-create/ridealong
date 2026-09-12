@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { mintToken, controlSecret, type LiveViewLike } from './live-view.js';
+import { mintToken, controlSecret, type LiveViewLike, type Verdict } from './live-view.js';
 
 /**
  * Follower live view. Two Claude Code sessions each spawn a scry server on
@@ -22,6 +22,8 @@ export class RemoteLiveView implements LiveViewLike {
   private retry: NodeJS.Timeout | undefined;
 
   private everConnected = false;
+  private askSeq = 0;
+  private pendingAsks = new Map<number, (v: Verdict) => void>();
 
   constructor(private opts: { secret: string; port: number; publicUrl?: string; onOwnerGone?: () => void }) {}
 
@@ -43,6 +45,7 @@ export class RemoteLiveView implements LiveViewLike {
         let m: any; try { m = JSON.parse(raw.toString()); } catch { return; }
         if (m && typeof m.mode === 'string' && (m.mode === 'read' || m.mode === 'input')) this.mode = m.mode;
         if (m && typeof m.paused === 'boolean') this.applyPaused(m.paused);
+        if (m && m.answer && typeof m.answer.ref === 'number') { this.pendingAsks.get(m.answer.ref)?.(m.answer.verdict); this.pendingAsks.delete(m.answer.ref); }
       });
       ws.on('error', () => { /* close follows */ });
       let opened = false;
@@ -82,6 +85,17 @@ export class RemoteLiveView implements LiveViewLike {
   getMode(): 'read' | 'input' { return this.mode; }
   announce(ev: { kind: string; label: string; x?: number; y?: number }): void { this.send({ t: 'announce', ...ev }); }
   isPaused(): boolean { return this.paused; }
+  hasViewers(): boolean { return !!(this.ws && this.ws.readyState === WebSocket.OPEN); } // the owner decides; see ask()
+  ask(question: string, opts: { timeoutMs?: number } = {}): Promise<Verdict> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.resolve('no-viewer');
+    const ref = ++this.askSeq;
+    const timeoutMs = opts.timeoutMs ?? 300_000;
+    return new Promise<Verdict>((resolve) => {
+      const timer = setTimeout(() => { this.pendingAsks.delete(ref); resolve('timeout'); }, timeoutMs + 2000);
+      this.pendingAsks.set(ref, (v) => { clearTimeout(timer); resolve(v); });
+      this.send({ t: 'ask', ref, question, timeoutMs });
+    });
+  }
   waitWhilePaused(): Promise<void> {
     if (!this.paused) return Promise.resolve();
     return new Promise<void>((resolve) => this.pauseWaiters.push(resolve));

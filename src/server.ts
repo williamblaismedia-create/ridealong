@@ -76,8 +76,16 @@ export function buildServer(deps: { perception: Perception; action: Action; netw
   };
 
   if (liveView) {
-    tools.live_start = { desc: `Demarrer (ou reutiliser) la vue live et renvoyer un lien signe et expirant que William ouvre pour regarder l\'onglet cible en direct. ttlSec est borne a [30,3600], defaut 900. ${PRIMARY_TAB_NOTE}`, shape: { ttlSec: z.number().int().min(30).max(3600).optional() }, run: async (a) => { await liveView.ensureStarted(); return liveView.url(a.ttlSec); } };
+    tools.live_start = { desc: `Demarrer (ou reutiliser) la vue live et renvoyer un lien signe et expirant que William ouvre pour regarder l\'onglet cible en direct. ttlSec est borne a [30,3600], defaut 900. ${PRIMARY_TAB_NOTE}`, shape: { ttlSec: z.number().int().min(30).max(3600).optional() }, run: async (a) => { await liveView.ensureStarted(); return `${liveView.url(a.ttlSec)}\n(Sur un appareil qui a deja ouvert un lien Scry, l\'adresse nue sans #token suffit pendant 30 jours : a mettre en favori.)`; } };
     tools.live_mode = { desc: 'Basculer la vue live entre "read" (regarder seulement) et "input" (passe-la-main : la souris/le clavier de William sont relayes vers l\'onglet cible). La perception est suspendue en mode input.', shape: { mode: z.enum(['read', 'input']) }, run: async (a) => { liveView.setMode(a.mode); return `mode: ${a.mode}`; } };
+    tools.ask_approval = { desc: 'Demander l\'accord de William AVANT une action sensible (paiement, envoi, suppression, publication, connexion a un compte). La question s\'affiche sur la vue live avec Approuver / Refuser ; l\'outil attend la reponse (timeoutSec, defaut 300). N\'agis que sur APPROUVE. Sans spectateur connecte, la reponse le dit et donne le lien a transmettre.', shape: { question: z.string().min(1).max(300), timeoutSec: z.number().int().min(5).max(1800).optional() }, run: async (a) => {
+      const v = await liveView.ask(a.question, { timeoutMs: (a.timeoutSec ?? 300) * 1000 });
+      if (v === 'approved') return `APPROUVE par William : « ${a.question} »`;
+      if (v === 'denied') return `REFUSE par William : « ${a.question} » — ne fais pas cette action.`;
+      if (v === 'timeout') return `SANS REPONSE apres ${a.timeoutSec ?? 300} s : « ${a.question} » — ne fais pas cette action, redemande plus tard.`;
+      await liveView.ensureStarted();
+      return `AUCUN SPECTATEUR connecte : William n\'a pas la vue live ouverte. Donne-lui ce lien puis redemande : ${liveView.url(3600)}`;
+    } };
     tools.live_stop = { desc: 'Arreter la vue live et invalider son lien. Re-appelable : un live_start ulterieur sert un nouveau lien.', shape: {}, run: async () => { await liveView.stop(); return 'vue live arretee'; } };
   }
 

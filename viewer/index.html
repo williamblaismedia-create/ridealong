@@ -223,8 +223,26 @@
   body.paused #pause .play { display: block; }
   body.paused #bar { border-color: rgba(197, 136, 42, 0.55); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(197, 136, 42, 0.35); }
 
+  /* Porte d'approbation : carte sous le notch, terracotta pour approuver. */
+  #ask { position: fixed; top: calc(var(--bar) + 14px); left: 50%; transform: translate(-50%, -12px); z-index: 6; width: min(440px, calc(100vw - 32px));
+    padding: 16px 16px 14px; border-radius: 18px; background: rgba(26, 23, 20, 0.97); border: 1px solid rgba(218, 119, 86, 0.5);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), var(--shadow-terra-sm); opacity: 0; pointer-events: none;
+    transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring); }
+  #ask.open { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+  #ask .eyebrow { font: 500 10px/1 var(--font-mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--terra-400); margin-bottom: 10px; }
+  #askq { font: 600 16px/1.35 var(--font-sans); letter-spacing: -0.01em; color: var(--warm-25); margin: 0 0 14px; overflow-wrap: anywhere; }
+  #ask .row { display: flex; gap: 10px; }
+  #ask button { flex: 1; min-height: 44px; border-radius: var(--r-pill); font: 600 14px/1 var(--font-sans); cursor: pointer; touch-action: manipulation;
+    transition: transform var(--dur-fast) var(--ease-spring), background var(--dur) var(--ease-out); }
+  #ask button:active { transform: var(--lift-press); }
+  #askyes { border: 1px solid var(--terra-500); background: var(--terra-500); color: #fff; box-shadow: var(--shadow-terra-sm); }
+  #askyes:hover { background: var(--terra-600); }
+  #askno { border: 1px solid var(--border-inverse); background: transparent; color: var(--warm-25); }
+  #askno:hover { background: rgba(255, 255, 255, 0.06); }
+
   /* Plein ecran : le cadre prend tout, sans chrome ni notch. */
   body.fs #bar, body.fs #hint, body.fs .tick, body.fs #journal { display: none; }
+  body.fs #ask { top: 14px; }
   body.fs #stage { padding: 0; }
   body.fs #frame { border-radius: 0; border: 0; box-shadow: none; }
   body.fs #chrome, body.fs #tabstrip { display: none; }
@@ -274,6 +292,11 @@
     <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="capture clavier">
   </div>
   <div id="hint"></div>
+  <div id="ask" role="alertdialog" aria-live="assertive" aria-labelledby="askq">
+    <div class="eyebrow">Claude demande ton accord</div>
+    <p id="askq"></p>
+    <div class="row"><button id="askno" type="button">Refuser</button><button id="askyes" type="button">Approuver</button></div>
+  </div>
   <div id="stage">
     <div id="lens">
       <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
@@ -322,11 +345,15 @@
   // otherwise come back with no token and lock a valid link out as
   // "lien expire". sessionStorage is per tab, dies with the tab, never
   // reaches history or any server log.
-  var KEY = 'scry.token';
+  var KEY = 'scry.token', DEVKEY = 'scry.device';
   var token = new URLSearchParams((location.hash || '').replace(/^#/, '')).get('token') || '';
+  var deviceToken = '';
   try {
     if (token) sessionStorage.setItem(KEY, token);
     else token = sessionStorage.getItem(KEY) || '';
+    // Appareil deja apparie : un jeton de 30 jours laisse par un lien valide,
+    // l'adresse nue suffit (favori, ecran d'accueil).
+    deviceToken = localStorage.getItem(DEVKEY) || '';
   } catch (e) {}
   try { history.replaceState(null, document.title, location.pathname + location.search); } catch (e) {}
 
@@ -379,7 +406,8 @@
     if (gaveUp) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
     var useVideo = wantVideo && !videoFailed;
-    var s = new WebSocket(scheme + location.host + '/?token=' + encodeURIComponent(token) + '&w=' + vs.w + '&h=' + vs.h + (useVideo ? '&video=1' : ''));
+    var auth = token ? 'token=' + encodeURIComponent(token) : 'device=' + encodeURIComponent(deviceToken);
+    var s = new WebSocket(scheme + location.host + '/?' + auth + '&w=' + vs.w + '&h=' + vs.h + (useVideo ? '&video=1' : ''));
     s.binaryType = 'arraybuffer';
     ws = s;
     resetVideo();
@@ -389,7 +417,12 @@
       dot.classList.remove('on');
       document.body.classList.add('off');
       setEnabled(false);
-      if (ev && ev.code === 1008) { gaveUp = true; try { sessionStorage.removeItem(KEY); } catch (e) {} hint.textContent = 'lien expiré — demande un nouveau lien à Claude'; return; }
+      if (ev && ev.code === 1008) {
+        // Short token dead but a device token exists: fall back to it once.
+        if (token && deviceToken) { token = ''; try { sessionStorage.removeItem(KEY); } catch (e) {} retryTimer = setTimeout(connect, 200); return; }
+        gaveUp = true; try { sessionStorage.removeItem(KEY); localStorage.removeItem(DEVKEY); } catch (e) {}
+        hint.textContent = 'lien expiré — demande un nouveau lien à Claude'; return;
+      }
       hint.textContent = 'reconnexion…';
       retryTimer = setTimeout(connect, retryMs);
       retryMs = Math.min(10000, retryMs * 2);
@@ -410,6 +443,8 @@
       if (typeof msg.mode === 'string' && msg.mode !== mode) setMode(msg.mode);
       if (Array.isArray(msg.tabs)) renderTabs(msg.tabs);
       if (msg.viewport) onViewport(msg.viewport);
+      if (typeof msg.device === 'string') { deviceToken = msg.device; try { localStorage.setItem(DEVKEY, msg.device); } catch (e) {} }
+      if (msg.ask) onAsk(msg.ask);
       if (msg.action) onAction(msg.action);
       if (typeof msg.paused === 'boolean') setPaused(msg.paused);
       if (typeof msg.data === 'string') {
@@ -569,6 +604,17 @@
   });
   document.addEventListener('fullscreenchange', function () { setFs(!!document.fullscreenElement); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('fs') && !document.fullscreenElement) setFs(false); });
+
+  // Porte d'approbation.
+  var askEl = document.getElementById('ask'), askQ = document.getElementById('askq'), askId = null;
+  function onAsk(a) {
+    if (a.done) { if (askId === a.id) { askId = null; askEl.classList.remove('open'); addEntry('pause', a.ok ? 'approuvé' : 'refusé / sans réponse'); } return; }
+    askId = a.id; askQ.textContent = a.question; askEl.classList.add('open');
+    addEntry('pause', 'demande : ' + a.question);
+    try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
+  }
+  document.getElementById('askyes').addEventListener('click', function () { if (askId !== null) send({ t: 'answer', id: askId, ok: true }); });
+  document.getElementById('askno').addEventListener('click', function () { if (askId !== null) send({ t: 'answer', id: askId, ok: false }); });
 
   // Curseur de Claude + journal. Les coordonnees arrivent en px CSS de la
   // page distante ; on les projette sur l'image affichee.

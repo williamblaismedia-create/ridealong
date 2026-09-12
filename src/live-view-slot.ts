@@ -1,4 +1,4 @@
-import { LiveView, type LiveViewLike } from './live-view.js';
+import { LiveView, type LiveViewLike, type Verdict } from './live-view.js';
 import { RemoteLiveView } from './live-view-remote.js';
 import type { Driver } from './driver.js';
 import type { VideoOpts } from './video.js';
@@ -72,5 +72,7 @@ export class LiveViewSlot implements LiveViewLike {
   waitWhilePaused(): Promise<void> { return this.current.waitWhilePaused(); }
   setTabSelector(fn: ((id: number) => Promise<void>) | undefined): void { this.tabSelector = fn; this.owner?.setTabSelector(fn); }
   setViewportSink(fn: ((v: { width: number; height: number }) => Promise<void>) | undefined): void { this.viewportSink = fn; this.owner?.setViewportSink(fn); }
+  hasViewers(): boolean { return this.current.hasViewers(); }
+  ask(question: string, opts?: { timeoutMs?: number }): Promise<Verdict> { return this.current.ask(question, opts); }
   async stop(): Promise<void> { this.stopped = true; await this.current.stop(); }
 }

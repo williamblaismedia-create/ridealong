@@ -550,6 +550,64 @@ describe('LiveView (integration)', () => {
     }
   });
 
+  // Approval gate: Claude asks, the notch shows Approuver / Refuser, the tool waits.
+  it('ask() pushes {ask} to viewers and resolves with the viewer\'s answer; times out; reports no viewer', async () => {
+    const ws = await connectAttached(wsUrlFor(PORT));
+    try {
+      const asked = new Promise<any>((resolve) => ws.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && m.ask && !m.ask.done) resolve(m.ask); }));
+      const pending = live.ask('Payer 49 $ ?', { timeoutMs: 5000 });
+      const a = await asked;
+      expect(a.question).toBe('Payer 49 $ ?');
+      ws.send(JSON.stringify({ t: 'answer', id: a.id, ok: true }));
+      expect(await pending).toBe('approved');
+      const denied = live.ask('Supprimer ?', { timeoutMs: 5000 });
+      const a2 = await new Promise<any>((resolve) => ws.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && m.ask && !m.ask.done && m.ask.question === 'Supprimer ?') resolve(m.ask); }));
+      ws.send(JSON.stringify({ t: 'answer', id: a2.id, ok: false }));
+      expect(await denied).toBe('denied');
+      expect(await live.ask('Encore ?', { timeoutMs: 300 })).toBe('timeout');
+    } finally { ws.close(); }
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await live.ask('Personne ?', { timeoutMs: 300 })).toBe('no-viewer');
+  });
+
+  it('the viewer page shows the approval card and Approuver answers it', async () => {
+    const lv = new LiveView(driver, { secret });
+    const { url } = await lv.start(PORT + 6);
+    const viewer = await driver.context().newPage();
+    try {
+      await viewer.goto(url(300));
+      await viewer.waitForSelector('#dot.on', { timeout: 5000 });
+      const pending = lv.ask('Envoyer le courriel ?', { timeoutMs: 8000 });
+      await viewer.waitForSelector('#ask.open', { timeout: 3000 });
+      expect(await viewer.textContent('#askq')).toContain('Envoyer le courriel');
+      await viewer.click('#askyes');
+      expect(await pending).toBe('approved');
+      await viewer.waitForSelector('#ask:not(.open)', { timeout: 3000 });
+    } finally { await viewer.close().catch(() => {}); await lv.stop(); }
+  });
+
+  // Device pairing: a short signed link, opened once, leaves a 30-day device
+  // token in the browser so the BARE url works afterwards (bookmarkable).
+  it('a short-token connection hands out a device token; the device token alone is accepted; a viewer token is not a device token', async () => {
+    const ws = new WebSocket(wsUrlFor(PORT));
+    const device = await new Promise<string>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('no device token')), 3000);
+      ws.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && typeof m.device === 'string') { clearTimeout(t); resolve(m.device); } });
+      ws.on('error', reject);
+    });
+    ws.close();
+    expect(device.split('.')[0]).toMatch(/^\d+$/);
+    const byDevice = new WebSocket(`ws://127.0.0.1:${PORT}/?device=${device}`);
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('device token refused')), 3000);
+      byDevice.on('message', (d) => { let m: any; try { m = JSON.parse(d.toString()); } catch { return; } if (m && (m.tabs || m.viewport)) { clearTimeout(t); resolve(); } });
+      byDevice.on('close', (c) => { if (c === 1008) { clearTimeout(t); reject(new Error('1008')); } });
+    });
+    byDevice.close();
+    const wrong = new WebSocket(`ws://127.0.0.1:${PORT}/?device=${mintToken(secret, 60)}`);
+    expect(await new Promise<number>((resolve) => wrong.on('close', (c) => resolve(c)))).toBe(1008);
+  });
+
   it('pushes a mode change to attached viewers at once, without waiting for a frame (N1)', async () => {
     const ws = await connectAttached(wsUrlFor(PORT));
     try {

@@ -77,7 +77,8 @@ describe('buildServer with a liveView', () => {
 
   it('live_start returns a signed #token URL for the live view', async () => {
     const out = await serverWithLive.callTool('live_start', {});
-    expect(out).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${LIVE_PORT}/#token=\\d+\\.[0-9a-f]+$`));
+    expect(out.split('\n')[0]).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${LIVE_PORT}/#token=\\d+\\.[0-9a-f]+$`));
+    expect(out).toMatch(/adresse nue/); // bare url works on paired devices
   });
 
   it('action tools wait while the viewer has paused Claude; navigate/act resume on unpause', async () => {
@@ -89,6 +90,13 @@ describe('buildServer with a liveView', () => {
     liveView.setPaused(false);
     await p;
     expect(done).toBe(true);
+  });
+
+  it('ask_approval returns a clear verdict, and says so when nobody is watching', async () => {
+    expect(serverWithLive.listToolNames()).toContain('ask_approval');
+    const out = await serverWithLive.callTool('ask_approval', { question: 'Payer ?', timeoutSec: 1 });
+    expect(out).toMatch(/aucun spectateur/i);
+    expect(out).toMatch(/#token=/); // the link to hand to William
   });
 
   it('live_mode flips the LiveView mode', async () => {
