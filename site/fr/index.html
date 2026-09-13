@@ -313,7 +313,7 @@
     <h1 style="margin-top:24px">Un navigateur piloté par votre IA. <em>Montez à bord,</em> reprenez le volant quand vous voulez.</h1>
     <p class="lead">Ridealong est un serveur MCP open source pour Claude Code. Claude pilote un vrai Google Chrome ; vous ouvrez un lien et vous le regardez en direct, vous pointez, vous mettez en pause, vous approuvez les étapes à risque ou vous prenez le volant depuis votre téléphone. Puis vous le rendez.</p>
     <div class="cta">
-      <div class="install"><code id="cmd">claude mcp add ridealong -- ./scripts/ridealong-local.sh</code><button type="button" id="copy">Copier la commande</button></div>
+      <div class="install"><code id="cmd">claude mcp add ridealong -- npx -y -p ridealong-mcp ridealong</code><button type="button" id="copy">Copier la commande</button></div>
       <a class="btn" href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">Voir sur GitHub</a>
     </div>
     <p class="meta">Licence MIT. Tourne sur macOS, Linux ou Docker avec Node 20. 133 tests. Un vrai Google Chrome, pas un navigateur sans tête.</p>
@@ -439,9 +439,10 @@
           <button role="tab" aria-selected="false" aria-controls="t-server" id="tab-server">Serveur toujours allumé</button>
         </div>
         <div role="tabpanel" id="t-local" aria-labelledby="tab-local">
-<pre>git clone https://github.com/williamblaismedia-create/ridealong &amp;&amp; cd ridealong
-npm ci &amp;&amp; npm run build
-claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"</pre>
+<pre>claude mcp add ridealong -- npx -y -p ridealong-mcp ridealong
+<span class="c"># or, as a Claude Code plugin</span>
+claude plugin marketplace add williamblaismedia-create/ridealong
+claude plugin install ridealong@ridealong</pre>
           <p>Démarre Chrome avec son port de débogage et un profil dédié, génère un secret au premier lancement. Puis, dans Claude Code : « ouvre example.com et donne-moi la vue live ». Avec ffmpeg vous avez la vidéo H.264 ; sans, des images JPEG.</p>
         </div>
         <div role="tabpanel" id="t-docker" aria-labelledby="tab-docker" hidden>

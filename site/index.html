@@ -312,7 +312,7 @@
     <h1 style="margin-top:24px">A browser your AI drives. <em>Ride along,</em> grab the wheel anytime.</h1>
     <p class="lead">Ridealong is an open-source MCP server for Claude Code. Claude drives a real Google Chrome; you open one link and watch it live, point at things, pause, approve the risky steps, or take the wheel from your phone. Then hand it back.</p>
     <div class="cta">
-      <div class="install"><code id="cmd">claude mcp add ridealong -- ./scripts/ridealong-local.sh</code><button type="button" id="copy">Copy command</button></div>
+      <div class="install"><code id="cmd">claude mcp add ridealong -- npx -y -p ridealong-mcp ridealong</code><button type="button" id="copy">Copy command</button></div>
       <a class="btn" href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">View on GitHub</a>
     </div>
     <p class="meta">MIT licensed. Runs on macOS, Linux or Docker with Node 20. 133 tests. A real Google Chrome, not a headless one.</p>
@@ -438,9 +438,10 @@
           <button role="tab" aria-selected="false" aria-controls="t-server" id="tab-server">Always-on server</button>
         </div>
         <div role="tabpanel" id="t-local" aria-labelledby="tab-local">
-<pre>git clone https://github.com/williamblaismedia-create/ridealong &amp;&amp; cd ridealong
-npm ci &amp;&amp; npm run build
-claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"</pre>
+<pre>claude mcp add ridealong -- npx -y -p ridealong-mcp ridealong
+<span class="c"># or, as a Claude Code plugin</span>
+claude plugin marketplace add williamblaismedia-create/ridealong
+claude plugin install ridealong@ridealong</pre>
           <p>Starts Chrome with its debugging port and a dedicated profile, generates a secret on first run. Then, in Claude Code: “open example.com and give me the live view”. With ffmpeg installed you get H.264 video; without it, JPEG frames.</p>
         </div>
         <div role="tabpanel" id="t-docker" aria-labelledby="tab-docker" hidden>

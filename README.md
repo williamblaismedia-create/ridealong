@@ -13,7 +13,8 @@
   <img alt="MIT" src="https://img.shields.io/badge/license-MIT-DA7756?style=flat-square">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-1A1714?style=flat-square">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-1A1714?style=flat-square">
-  <img alt="tests" src="https://img.shields.io/badge/vitest-131%20passing-3E7D5A?style=flat-square">
+  <a href="https://www.npmjs.com/package/ridealong-mcp"><img alt="npm" src="https://img.shields.io/npm/v/ridealong-mcp?style=flat-square&color=DA7756&label=npm"></a>
+  <img alt="tests" src="https://img.shields.io/badge/vitest-133%20passing-3E7D5A?style=flat-square">
 </p>
 
 <p align="center"><a href="https://williamblaismedia-create.github.io/ridealong/"><strong>Website</strong></a> · <a href="#quick-start">Quick start</a> · <a href="https://williamblaismedia-create.github.io/ridealong/fr/">Site en français</a> · <a href="README.fr.md">README en français</a></p>
@@ -65,9 +66,10 @@ into the transcript, and sensitive actions wait for an approval.
 **On the machine Claude drives** — nothing to host:
 
 ```bash
-git clone https://github.com/williamblaismedia-create/ridealong && cd ridealong && npm ci && npm run build
-claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"
+claude mcp add ridealong -- npx -y -p ridealong-mcp ridealong
 ```
+
+Or as a Claude Code plugin: `claude plugin marketplace add williamblaismedia-create/ridealong` then `claude plugin install ridealong@ridealong`. From source: `git clone … && npm ci && npm run build && claude mcp add ridealong -- "$PWD/scripts/ridealong-local.sh"`.
 
 Then, in Claude Code: *"open timeliner.io and give me the live view"*.
 You get a signed link (`http://127.0.0.1:9400/#token=…`). Open it once on a

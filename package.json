@@ -28,7 +28,7 @@
   "author": "William Blais <williamblaismedia@gmail.com> (https://wautomatisations.com)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/williamblaismedia-create/ridealong.git"
+    "url": "git+https://github.com/williamblaismedia-create/ridealong.git"
   },
   "homepage": "https://github.com/williamblaismedia-create/ridealong#readme",
   "keywords": [
