@@ -38,7 +38,7 @@ into the transcript, and sensitive actions wait for an approval.
 
 ## On your phone
 
-<p align="center"><video src="https://github.com/williamblaismedia-create/ridealong/raw/main/docs/media/ridealong-phone.mp4" width="360" controls muted playsinline></video></p>
+<p align="center"><img src="docs/demo-takeover.gif" width="300" alt="Ridealong on a phone: Claude drives, an approval card appears, then the operator takes the wheel in Manual mode"></p>
 
 <table align="center" border="0"><tr>
 <td width="62%"><img src="docs/media/liveview.png" alt="Live view on desktop: tabs, Claude's cursor, the action journal"></td>
@@ -87,6 +87,22 @@ relay that survives your laptop sleeping: the reference setup is in
 
 `ffmpeg` installed → H.264 video (NVENC · VideoToolbox · libx264, auto-detected).
 No ffmpeg → JPEG frames. Either way it works.
+
+## Examples
+
+Three copy-pasteable scenarios in [`examples/`](examples/), each with the
+exact prompt, what you see on the live view and where you step in:
+
+- [**QA after deploy**](examples/qa-after-deploy/) — reload with the cache
+  bypassed, click through the flow, read `console_errors` and
+  `network_requests`, report. Includes a `CLAUDE.md` snippet to run it after
+  every deploy.
+- [**Approval-gated purchase**](examples/approval-gated-purchase/) — Claude
+  fills the checkout, `ask_approval` blocks before "Place order", you tap
+  Approve on your phone.
+- [**Login handoff**](examples/login-handoff/) — Claude hits a login or 2FA
+  wall, switches to Manual, you type on your own device, Claude never sees
+  the keystrokes.
 
 ## What you get on the live view
 

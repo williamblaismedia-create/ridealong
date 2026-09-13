@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comment Ridealong diffuse un vrai Chrome vers ton téléphone en H.264</title>
+<meta name="description" content="La moitié streaming de Ridealong, lue dans le code : screencast CDP vers ffmpeg (NVENC, VideoToolbox ou libx264), MP4 fragmenté en morceaux de 100 ms sur un websocket, Media Source Extensions sur le téléphone, et les pings, jetons et reconnexions qui gardent tout ça en vie à travers un tunnel Cloudflare.">
+<link rel="canonical" href="https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/">
+<link rel="alternate" hreflang="en" href="https://williamblaismedia-create.github.io/ridealong/blog/streaming-chrome-h264-to-your-phone/">
+<link rel="alternate" hreflang="fr" href="https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/">
+<link rel="alternate" hreflang="x-default" href="https://williamblaismedia-create.github.io/ridealong/blog/streaming-chrome-h264-to-your-phone/">
+<link rel="icon" type="image/svg+xml" href="../../../media/ridealong-mark.svg">
+<meta name="theme-color" content="#0B0908">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="author" content="William Blais — W Automatisations">
+<meta name="keywords" content="streaming H.264, Chrome DevTools Protocol, Page.startScreencast, ffmpeg NVENC, MP4 fragmenté, Media Source Extensions, websocket, serveur MCP, Claude Code, vue live">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Ridealong">
+<meta property="og:title" content="Comment Ridealong diffuse un vrai Chrome vers ton téléphone en H.264">
+<meta property="og:description" content="Screencast CDP vers ffmpeg, MP4 fragmenté sur un websocket, MSE sur le téléphone, et les parties ingrates (pings, jetons, reconnexions) qui l'ont rendu fiable.">
+<meta property="og:url" content="https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/">
+<meta property="og:locale" content="fr_CA">
+<meta property="og:image" content="https://williamblaismedia-create.github.io/ridealong/media/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="article:published_time" content="2026-09-13">
+<meta property="article:author" content="William Blais">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Comment Ridealong diffuse un vrai Chrome vers ton téléphone en H.264">
+<meta name="twitter:description" content="Screencast CDP vers ffmpeg, MP4 fragmenté sur un websocket, MSE sur le téléphone, et les parties ingrates qui l'ont rendu fiable.">
+<meta name="twitter:image" content="https://williamblaismedia-create.github.io/ridealong/media/og.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "@id": "https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/#post",
+  "mainEntityOfPage": "https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/",
+  "url": "https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/",
+  "headline": "Comment Ridealong diffuse un vrai Chrome vers ton téléphone en H.264",
+  "description": "La moitié streaming de Ridealong, lue dans le code : screencast CDP vers ffmpeg, MP4 fragmenté en morceaux de 100 ms sur un websocket, Media Source Extensions sur le téléphone, et les pings, jetons et reconnexions qui gardent tout ça en vie à travers un tunnel Cloudflare.",
+  "image": "https://williamblaismedia-create.github.io/ridealong/media/og.png",
+  "inLanguage": "fr",
+  "datePublished": "2026-09-13",
+  "dateModified": "2026-09-13",
+  "author": { "@type": "Person", "name": "William Blais", "url": "https://wautomatisations.com" },
+  "publisher": { "@type": "Organization", "@id": "https://williamblaismedia-create.github.io/ridealong/#org", "name": "W Automatisations", "url": "https://wautomatisations.com", "logo": { "@type": "ImageObject", "url": "https://williamblaismedia-create.github.io/ridealong/media/ridealong-logo.svg" } },
+  "about": { "@type": "SoftwareApplication", "@id": "https://williamblaismedia-create.github.io/ridealong/#app", "name": "Ridealong" },
+  "keywords": "H.264, Chrome DevTools Protocol, ffmpeg, NVENC, MP4 fragmenté, Media Source Extensions, websocket, serveur MCP, Claude Code",
+  "isAccessibleForFree": true
+}
+</script>
+
+<style>
+  :root {
+    --bg: #0B0908; --bg-2: #0E0C0A; --ink: #1A1714; --ink-2: #221E1A;
+    --cream: #FAF8F5; --cream-2: #DDD6CB; --muted: #A69C8D; --faint: #605850;
+    --terra: #DA7756; --terra-2: #E6A485; --terra-deep: #A94B2D;
+    --line: rgba(255,255,255,.09); --line-2: rgba(255,255,255,.05);
+    --sans: "Montserrat", "Helvetica Neue", Arial, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --ease: cubic-bezier(.16,1,.3,1); --r: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--cream); font: 500 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; position: relative; }
+  body::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .045; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  body::after { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(40% 18% at 60% 92%, rgba(218,119,86,.07), rgba(218,119,86,0) 70%); }
+  nav, header, main, footer { position: relative; z-index: 1; }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; display: block; }
+  .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+  h1, h2, h3 { margin: 0; letter-spacing: -.02em; line-height: 1.1; }
+  p { margin: 0; }
+  code, .mono { font-family: var(--mono); }
+  :focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(218,119,86,.55); border-radius: 8px; }
+
+  nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: rgba(11,9,8,.72); border-bottom: 1px solid var(--line-2); }
+  nav .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: italic 800 17px/1 var(--sans); letter-spacing: .05em; }
+  .brand svg { width: 22px; height: 22px; }
+  nav .links { margin-left: auto; display: flex; gap: 22px; align-items: center; font-size: 14px; color: var(--cream-2); }
+  nav .links a:hover { color: var(--cream); }
+  .lang { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line); background: var(--ink); }
+  .lang a { padding: 6px 12px; border-radius: 999px; font: 600 12px var(--sans); color: var(--muted); }
+  .lang a[aria-current] { background: var(--cream); color: var(--ink); }
+  .gh { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--ink); font-size: 13px; }
+  .gh svg { width: 16px; height: 16px; fill: var(--cream); }
+
+  /* Article header: the horizon glow from the landing, quieter. */
+  .post-hero { position: relative; padding: 88px 0 24px; overflow: hidden; isolation: isolate; }
+  .post-hero .horizon { position: absolute; left: 50%; bottom: -260px; width: 1600px; height: 700px; transform: translateX(-50%); z-index: 0; pointer-events: none;
+    background: radial-gradient(50% 45% at 50% 100%, rgba(218,119,86,.30) 0%, rgba(218,119,86,.10) 38%, rgba(218,119,86,0) 72%); filter: blur(10px); }
+  .post-hero .wrap { position: relative; z-index: 1; }
+  .eyebrow { font: 600 12px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--terra-2); }
+  .post-hero h1 { margin-top: 18px; font-size: clamp(32px, 5.2vw, 60px); font-weight: 700; max-width: 18ch; }
+  .post-hero h1 em { font-style: italic; font-weight: 800; }
+  .post-hero .lead { margin-top: 20px; color: var(--muted); font-size: clamp(17px, 1.6vw, 20px); max-width: 60ch; }
+  .byline { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; color: var(--faint); }
+  .byline b { color: var(--cream-2); font-weight: 600; }
+
+  /* Article body: a readable measure. */
+  .post { width: min(70ch, calc(100% - 40px)); margin: 40px auto 0; font-size: 17px; line-height: 1.7; color: var(--cream-2); }
+  .post > * + * { margin-top: 22px; }
+  .post h2 { margin-top: 64px; font-size: clamp(24px, 3vw, 34px); font-weight: 700; color: var(--cream); max-width: 24ch; }
+  .post h2::before { content: ""; display: block; width: 44px; height: 3px; border-radius: 2px; background: var(--terra); margin-bottom: 18px; }
+  .post p strong { color: var(--cream); font-weight: 600; }
+  .post a { color: var(--terra-2); border-bottom: 1px solid rgba(230,164,133,.35); }
+  .post a:hover { color: var(--cream); border-color: var(--cream); }
+  .post code { font-size: .88em; background: rgba(255,255,255,.06); border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 6px; color: var(--cream); }
+  .post pre { margin: 0; padding: 18px 20px; border-radius: var(--r); background: var(--ink); border: 1px solid var(--line); font: 500 13.5px/1.7 var(--mono); color: var(--cream-2); overflow-x: auto; white-space: pre; }
+  .post pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+  .post pre .c { color: var(--faint); }
+  .post ul { padding-left: 22px; }
+  .post li + li { margin-top: 8px; }
+  .post figure { margin: 34px 0 0; }
+  .post figcaption { margin-top: 12px; font-size: 14px; color: var(--faint); }
+  .post .shot { border-radius: 20px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 40px 100px rgba(0,0,0,.55); background: var(--ink); }
+  .post .shot img { width: 100%; height: auto; }
+
+  /* Pipeline diagram. */
+  .pipe-wrap { border-radius: var(--r); background: var(--ink); border: 1px solid var(--line); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .pipe { display: block; width: 100%; height: auto; padding: 14px 8px; }
+  .pipe .box { fill: var(--ink-2); stroke: var(--line); stroke-width: 1; }
+  .pipe .box.hot { stroke: rgba(218,119,86,.55); }
+  .pipe .t { font: 600 14px var(--sans); fill: var(--cream); }
+  .pipe .s { font: 500 10.5px var(--mono); fill: var(--muted); }
+  .pipe .lbl { font: 500 10.5px var(--mono); fill: var(--terra-2); }
+  .pipe .arrow { fill: none; stroke: var(--terra); stroke-width: 1.6; marker-end: url(#ah); }
+  .pipe .back { fill: none; stroke: var(--cream); stroke-opacity: .35; stroke-width: 1.2; stroke-dasharray: 4 6; marker-end: url(#ah2); }
+  .pipe .dot { fill: var(--terra); }
+
+  .cta { margin-top: 64px; padding: 28px; border-radius: 22px; border: 1px solid var(--line); background: var(--ink); box-shadow: 0 0 0 1px rgba(218,119,86,.14), 0 -40px 120px rgba(218,119,86,.06); }
+  .cta h3 { font-size: 20px; color: var(--cream); }
+  .cta p { margin-top: 10px; color: var(--muted); font-size: 15px; }
+  .cta .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 18px; }
+  .install { display: inline-flex; align-items: center; gap: 14px; max-width: 100%; min-height: 52px; padding: 8px 8px 8px 18px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font: 500 13.5px var(--mono); color: var(--cream-2); }
+  .install code { background: none; border: 0; padding: 0; font-size: inherit; overflow-wrap: anywhere; }
+  .install button { flex: none; height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--terra); color: #fff; font: 600 13px var(--sans); cursor: pointer; transition: transform .15s var(--ease), background .2s; }
+  .install button:hover { background: var(--terra-deep); } .install button:active { transform: scale(.97); }
+  .btn { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--cream); font-weight: 600; font-size: 14px; }
+  .btn:hover { background: rgba(255,255,255,.05); }
+
+  footer { margin-top: 120px; padding: 40px 0 60px; border-top: 1px solid var(--line-2); color: var(--faint); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; }
+  footer a { color: var(--cream-2); } footer a:hover { color: var(--cream); }
+  footer .brand { margin-right: auto; }
+
+  @media (max-width: 860px) {
+    nav .links > a:not(.gh) { display: none; }
+    .post-hero { padding-top: 56px; }
+    .post { font-size: 16px; }
+    .post h2 { margin-top: 48px; }
+    .cta { padding: 22px 18px; }
+    .install { border-radius: 22px; }
+    .pipe { min-width: 620px; }
+  }
+  @media (max-width: 480px) { nav .wrap { gap: 12px; } nav .links { gap: 12px; } .gh { padding: 0 10px; } .gh span { display: none; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .install button { transition: none; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="../../" aria-label="Ridealong">
+      <svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="29" fill="none" stroke="#FAF8F5" stroke-width="7"/><path d="M31.6 36.8a21 21 0 0 1 13.4-9.3" fill="none" stroke="#FAF8F5" stroke-width="5" stroke-linecap="round" opacity=".45"/><circle cx="48" cy="48" r="11" fill="#DA7756"/></svg>
+      RIDEALONG
+    </a>
+    <div class="links">
+      <div class="lang" role="group" aria-label="Langue"><a href="../../../blog/streaming-chrome-h264-to-your-phone/" hreflang="en">EN</a><a href="./" aria-current="page" hreflang="fr">FR</a></div>
+      <a href="../../#moves">Ce que vous avez</a>
+      <a href="../../#install">Installer</a>
+      <a href="../../#faq">FAQ</a>
+      <a class="gh" href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="post-hero">
+  <div class="horizon" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="eyebrow">Ingénierie</p>
+    <h1>Comment Ridealong diffuse un vrai Chrome vers ton téléphone <em>en H.264</em></h1>
+    <p class="lead">Un onglet Chrome, un processus ffmpeg, un websocket et un élément <code>&lt;video&gt;</code>. C'est la moitié streaming de Ridealong, lue directement dans le code, avec les parties ingrates qui lui ont permis de survivre aux vrais réseaux.</p>
+    <p class="byline"><span>Par <b>William Blais</b></span><span><time datetime="2026-09-13">13 septembre 2026</time></span><span>Environ 8 minutes</span></p>
+  </div>
+</header>
+
+<main>
+  <article class="post">
+    <p>Claude Code qui pilote un navigateur, c'est formidable jusqu'au moment où il tombe sur une page de connexion, un CAPTCHA ou un bouton « Payer ». À ce moment-là tu veux voir exactement ce qu'il voit, et parfois tu veux reprendre la main. Sur le portable où tourne Chrome, un outil de capture d'écran couvre l'essentiel. Depuis un téléphone, à travers un tunnel, pendant que l'agent est en pleine tâche, une capture toutes les quelques secondes n'est pas une vue. C'est un diaporama.</p>
+    <p><a href="../../">Ridealong</a> est un serveur MCP open source pour Claude Code qui pilote un vrai Google Chrome et le diffuse vers une page web que tu peux regarder, pointer, mettre en pause, approuver ou reprendre depuis ton téléphone. Ce billet parle de la moitié streaming : comment un onglet Chrome finit en H.264 dans un élément <code>&lt;video&gt;</code> sur un téléphone, et le travail ingrat qui l'a rendu fiable. Tout ce qui suit est lu dans le <a href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">code</a> ; les chiffres sont les vraies valeurs par défaut.</p>
+
+    <figure>
+      <div class="shot"><img src="../../../media/phone.png" width="1400" height="2000" alt="Ridealong sur un téléphone : le sélecteur Auto et Manuel, une carte d'approbation et l'image live de Chrome" loading="lazy" style="max-height:520px;object-fit:cover;object-position:center 10%"></div>
+      <figcaption>La cible : un vrai Chrome, en direct sur un téléphone, avec une carte d'approbation par-dessus.</figcaption>
+    </figure>
+
+    <h2>Pourquoi le screencast JPEG ne suffisait pas</h2>
+    <p>Le protocole Chrome DevTools a <code>Page.startScreencast</code>. Donne-lui un format, une qualité et une taille maximale, et Chrome t'envoie un JPEG à chaque fois que l'onglet se redessine. La première vue live de Ridealong, c'était exactement ça. Chaque spectateur ouvre un websocket et annonce combien de pixels physiques il peut afficher (taille CSS fois <code>devicePixelRatio</code>) ; le serveur plafonne le screencast à cette taille, bornée entre 320 et 4096 px, en JPEG qualité 85. Un téléphone reçoit un flux à sa taille, un écran retina reçoit tout ce que Chrome sait rendre, et personne ne paie pour des pixels qu'il ne peut pas voir.</p>
+    <p>Ce chemin existe toujours, c'est le repli. Comme chemin principal, il a trois problèmes. Chaque image est une image complète : aucune compression inter-images, donc un défilement est une rafale de JPEG entiers, et sur un téléphone derrière un tunnel le socket s'engorge et l'image saccade exactement quand le mouvement compte. Chaque spectateur a son propre screencast, donc Chrome encode une fois par spectateur. Et les images voyagent en base64 dans des messages JSON texte, un tiers d'octets en plus pour rien.</p>
+    <p>Le H.264 règle le premier problème par construction : une P-frame sur une page qui n'a pas changé ne coûte presque rien, et un défilement, c'est surtout des vecteurs de mouvement. Un seul encodeur partagé par tous les spectateurs règle le deuxième. Des trames websocket binaires règlent le troisième.</p>
+
+    <h2>Le pipeline</h2>
+    <figure>
+      <div class="pipe-wrap"><svg class="pipe" viewBox="0 0 960 350" role="img" aria-labelledby="pipe-t pipe-d">
+        <title id="pipe-t">Pipeline vidéo de Ridealong</title>
+        <desc id="pipe-d">Google Chrome émet des images JPEG de screencast vers ridealong, qui les écrit sur l'entrée standard de ffmpeg en MJPEG. ffmpeg encode en H.264 avec NVENC, VideoToolbox ou libx264 et sort du MP4 fragmenté en fragments de 100 ms. Un découpeur sépare le segment d'initialisation des segments média ; ils partent sur un websocket en trames binaires marquées 0x01 et 0x02 vers le téléphone, où Media Source Extensions les joue dans un élément video. En mode Manuel, la saisie du téléphone retourne vers Chrome et n'est jamais stockée.</desc>
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#DA7756"/></marker>
+          <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#FAF8F5" fill-opacity=".5"/></marker>
+        </defs>
+        <rect class="box" x="20" y="30" width="260" height="70" rx="14"/>
+        <text class="t" x="40" y="58">Google Chrome</text>
+        <text class="s" x="40" y="80">Page.startScreencast · JPEG q92</text>
+        <path class="arrow" d="M282 65 H346"/>
+        <rect class="box" x="350" y="30" width="260" height="70" rx="14"/>
+        <text class="t" x="370" y="58">ridealong</text>
+        <text class="s" x="370" y="80">un screencast, encodeur partagé</text>
+        <path class="arrow" d="M612 65 H676"/>
+        <text class="lbl" x="644" y="52" text-anchor="middle">MJPEG</text>
+        <rect class="box hot" x="680" y="30" width="260" height="70" rx="14"/>
+        <text class="t" x="700" y="58">ffmpeg</text>
+        <text class="s" x="700" y="80">nvenc · videotoolbox · libx264</text>
+        <path class="arrow" d="M810 102 V236"/>
+        <text class="lbl" x="826" y="160">fMP4</text>
+        <text class="lbl" x="826" y="178">frag_keyframe</text>
+        <text class="lbl" x="826" y="196">100 ms</text>
+        <rect class="box" x="680" y="240" width="260" height="70" rx="14"/>
+        <text class="t" x="700" y="268">Mp4Splitter</text>
+        <text class="s" x="700" y="290">ftyp+moov · paires moof+mdat</text>
+        <path class="arrow" d="M678 275 H614"/>
+        <rect class="box" x="350" y="240" width="260" height="70" rx="14"/>
+        <text class="t" x="370" y="268">websocket</text>
+        <text class="s" x="370" y="290">0x01 init · 0x02 segment</text>
+        <path class="arrow" d="M348 275 H284"/>
+        <rect class="box hot" x="20" y="240" width="260" height="70" rx="14"/>
+        <text class="t" x="40" y="268">ton téléphone</text>
+        <text class="s" x="40" y="290">MSE · avc1.42E01E · sequence</text>
+        <path class="back" d="M150 238 V104"/>
+        <text class="s" x="166" y="160">Mode Manuel</text>
+        <text class="s" x="166" y="178">Input.dispatch*</text>
+        <text class="s" x="166" y="196">jamais stocké</text>
+        <circle class="dot" cx="150" cy="170" r="3"/>
+      </svg></div>
+      <figcaption>Six étapes, un processus par Chrome, un octet de cadrage sur le fil.</figcaption>
+    </figure>
+
+    <p><strong>La source reste le screencast.</strong> Un screencast par Chrome, pas par spectateur, à la taille du viewport, JPEG qualité 92, qui alimente l'encodeur. L'alternative évidente sous Linux serait <code>x11grab</code>, mais le screencast suit déjà exactement l'onglet diffusé et son viewport, sans barre d'onglets ni autre fenêtre, et il ne coûte rien sur une page statique : Chrome n'émet aucune image, ffmpeg ne reçoit rien.</p>
+    <p><strong>ffmpeg lit stdin comme du MJPEG.</strong> Les images sont écrites sur l'entrée standard de l'encodeur avec <code>-f mjpeg -i pipe:0</code>. Deux options font l'essentiel du travail : <code>-use_wallclock_as_timestamps 1</code> et <code>-fps_mode passthrough</code>. Les horodatages sont l'heure réelle, passés tels quels, sans duplication à cadence constante, donc une longue période statique ne produit rien au lieu d'une rafale d'images identiques.</p>
+    <p><strong>L'encodeur, c'est ce que la machine a.</strong> Au démarrage, Ridealong lance <code>ffmpeg -encoders</code> une fois et prend le premier de <code>h264_nvenc</code>, <code>h264_videotoolbox</code>, <code>libx264</code>. Sur le chemin NVIDIA, les réglages privilégient la qualité : preset <code>p4</code>, tune basse latence, VBR piloté par une cible de qualité constante de 19 avec AQ spatial et temporel, et mode zéro latence. Comparé en 1080p à <code>p1</code> en CBR, ça fait environ 1,7 fois les octets sur une mire de pire cas et un texte d'interface visiblement plus net. VideoToolbox tourne en mode temps réel ; libx264 utilise <code>ultrafast</code> et <code>zerolatency</code>. Les trois produisent du Constrained Baseline, sans B-frames, avec une image clé toutes les deux secondes. Le débit cible suit la taille de l'image : 5 Mb/s en 1440x900, environ 8 Mb/s en 1920x1080, maxrate à 1,75 fois ça.</p>
+    <p><strong>La sortie est du MP4 fragmenté.</strong> <code>-movflags frag_keyframe+empty_moov+default_base_moof</code> avec une durée de fragment de 100 ms. Un découpeur de boîtes incrémental lit la sortie standard de ffmpeg : il collecte <code>ftyp</code> et <code>moov</code> une seule fois comme segment d'initialisation, puis associe chaque <code>moof</code> à son <code>mdat</code> en un segment média. Tout le reste au niveau supérieur est ignoré.</p>
+    <p><strong>Sur le fil, un octet de cadrage.</strong> Les segments partent en messages websocket binaires sur le même socket que le trafic de contrôle JSON (mode, onglets, cartes d'approbation, pointages). Le premier octet dit ce que c'est : <code>0x01</code> pour un segment d'initialisation, <code>0x02</code> pour un segment média. C'est tout le protocole.</p>
+    <p><strong>Dans le navigateur, Media Source Extensions.</strong> La page crée un <code>MediaSource</code> (ou <code>ManagedMediaSource</code> sur Safari iOS) avec la chaîne de codec <code>avc1.42E01E</code>, Constrained Baseline 3.0, que tous les téléphones décodent en matériel. Le SourceBuffer tourne en mode <code>sequence</code> : un message <code>0x01</code> ouvre un MediaSource neuf, les messages <code>0x02</code> sont ajoutés dans l'ordre. Toutes les 250 ms, une boucle vérifie le retard de la lecture sur la fin du tampon. En Auto, elle tolère 0,9 s et pousse <code>playbackRate</code> à 1,1 passé 0,6 s. En Manuel, chaque tap compte, donc elle accélère passé 0,18 s et saute au direct passé 0,5 s. Le tampon est taillé derrière la tête de lecture pour qu'une longue session ne fasse pas gonfler la mémoire.</p>
+    <p>Deux détails donnent cette impression de continuité. Un retardataire a besoin d'un segment d'initialisation et d'une image clé ; la réponse simple et correcte est de redémarrer l'encodeur quand quelqu'un arrive, regroupé sur 150 ms, pour que tout le monde reçoive un init frais et une image IDR. Et comme Chrome n'émet une image que quand quelque chose change, une page immobile affamerait ffmpeg et bloquerait MSE. Donc au repos, le serveur renvoie la dernière image JPEG toutes les 500 ms quand rien n'est arrivé depuis 450 ms, à peu près 2 images par seconde. En VBR ce sont des P-frames identiques qui ne coûtent presque rien.</p>
+
+    <h2>Les parties ingrates qui l'ont rendu fiable</h2>
+    <p><strong>Les déconnexions.</strong> Le proxy de Cloudflare coupe un websocket qui ne transporte aucun octet pendant environ 100 secondes ; mesuré à travers le tunnel, c'était un code de fermeture 1006 à 125 s. Une page de connexion statique ne produit aucune image de screencast, donc sans aide la vue live « se déconnectait » toutes les deux minutes d'attente. Le serveur envoie maintenant un ping au niveau du protocole toutes les 30 secondes, une marge de 3x. Le navigateur répond lui-même aux pings, la page ne les voit jamais, et ils ne transportent rien.</p>
+    <p><strong>La reconnexion.</strong> Le lien tombe aussi pour des raisons ordinaires : le téléphone se verrouille, Safari passe en arrière-plan, le serveur MCP redémarre. La page garde la dernière image à l'écran et se reconnecte toute seule avec un délai qui part de 1 s et double jusqu'à 10 s, en réessayant tout de suite sur <code>visibilitychange</code> et <code>online</code>. Seul le code de fermeture 1008, un jeton invalide ou expiré, est définitif.</p>
+    <p><strong>Un chien de garde avec repli JPEG.</strong> Quatre secondes après l'ouverture du socket sur le chemin vidéo, si l'élément <code>&lt;video&gt;</code> n'a rien décodé (pas d'init, ou un codec refusé par le navigateur), la page marque la vidéo comme échouée et se reconnecte sur le chemin JPEG au lieu d'afficher du noir. Si ffmpeg meurt côté serveur (pas d'encodeur, GPU occupé), les spectateurs sont prévenus et font pareil. Un bouton bascule entre les deux chemins à la main.</p>
+    <p><strong>La contre-pression.</strong> Si le tampon stdin de ffmpeg dépasse 8 Mo, l'image suivante est sautée plutôt que mise en file ; celle d'après porte la même image. Un segment média ne peut pas être sauté sans casser le décodeur jusqu'à la prochaine image clé, donc un spectateur vidéo avec plus de 4 Mo en attente est coupé et se reconnecte pour un init frais. Sur le chemin JPEG, un spectateur au-dessus de 1 Mo perd juste une image.</p>
+    <p><strong>Les jetons.</strong> Un lien live, c'est <code>exp.hmac</code> : une expiration unix et un HMAC-SHA256 par-dessus, comparé en temps constant. Le TTL est borné entre 30 s et 1 h, 15 min par défaut, parce qu'une connexion par passkey peut prendre plus de 5 min. Le jeton voyage dans le fragment d'URL, donc il n'atteint jamais le serveur ni les journaux d'accès Cloudflare ; la page l'efface de l'historique avec <code>replaceState</code> et le garde en <code>sessionStorage</code> pour qu'un rechargement réflexe ne te bloque pas dehors. Ouvrir un lien valide frappe un jeton d'appareil de 30 jours, signé avec une clé dérivée et stocké en <code>localStorage</code>, donc l'adresse nue fonctionne sur ce téléphone à partir de là. Les clients de contrôle utilisent une troisième clé dérivée, donc un lien spectateur ne peut jamais en tenir lieu. Changer le secret révoque tout.</p>
+    <p><strong>Un Chrome, une vue live.</strong> Deux sessions Claude Code sur le même Chrome se disputeraient le port. À la place, la deuxième tombe sur <code>EADDRINUSE</code> et suit la première comme client de contrôle : elle reçoit les changements de mode, de pause et d'action, annonce ses propres actions et demande les approbations à travers le propriétaire. Quand le propriétaire disparaît, le suiveur prend le port et se promeut, donc les liens qu'il a distribués continuent de fonctionner.</p>
+    <p><strong>Le mode Manuel ne capture rien.</strong> Quand tu prends le volant, les messages souris, clavier et pincement sont analysés seulement pour retirer le champ de type et passer le reste à <code>Input.dispatchMouseEvent</code>, <code>Input.dispatchKeyEvent</code> ou <code>Input.synthesizePinchGesture</code>. Rien n'est poussé dans un tableau, rien n'est journalisé, aucune propriété du serveur n'accumule de frappes, et les outils de perception de Claude refusent de s'exécuter tant que la vue est en mode input. Comme une page de connexion statique ne produit aucune image, le changement de mode est poussé explicitement à chaque spectateur plutôt que d'attendre la prochaine image.</p>
+
+    <h2>La suite</h2>
+    <p>Le débit adaptatif pour les liens mobiles faibles est le trou évident : aujourd'hui l'encodeur vise un débit par résolution et le spectateur se débrouille. L'enregistrement de session, la vidéo plus le journal en chapitres, est sur la feuille de route. Et oui, WebRTC gagnerait de la latence ; ça voudrait aussi dire une pile média dans Node et une histoire de STUN/TURN, là où du MP4 fragmenté sur un websocket que le spectateur avait déjà, c'était un processus et un port.</p>
+
+    <div class="cta">
+      <h3>Essaie-le dans Claude Code</h3>
+      <p>Une commande sur la machine que Claude pilote. Ensuite, demande à Claude d'ouvrir un site et de te donner la vue live.</p>
+      <div class="row">
+        <div class="install"><code id="cmd">claude mcp add ridealong -- npx -y -p ridealong-mcp ridealong</code><button type="button" id="copy">Copier</button></div>
+        <a class="btn" href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">Le code sur GitHub</a>
+        <a class="btn" href="../../">Page d'accueil Ridealong</a>
+      </div>
+    </div>
+  </article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../../"><svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="29" fill="none" stroke="#FAF8F5" stroke-width="7"/><circle cx="48" cy="48" r="11" fill="#DA7756"/></svg>RIDEALONG</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong" rel="noopener">GitHub</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong/blob/main/README.fr.md" rel="noopener">Documentation</a>
+    <a href="./">Comment ça marche</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong/blob/main/SECURITY.md" rel="noopener">Sécurité</a>
+    <a href="https://github.com/williamblaismedia-create/ridealong/blob/main/CONTRIBUTING.md" rel="noopener">Contribuer</a>
+    <span>Licence MIT. Fait par <a href="https://wautomatisations.com" rel="noopener">W Automatisations</a> à Montréal.</span>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('copy').addEventListener('click', function () {
+    var b = this, t = document.getElementById('cmd').textContent;
+    navigator.clipboard.writeText(t).then(function () { b.textContent = 'Copié'; setTimeout(function () { b.textContent = 'Copier'; }, 1400); });
+  });
+</script>
+</body>
+</html>

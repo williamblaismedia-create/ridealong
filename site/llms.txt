@@ -11,6 +11,10 @@ Key facts
 - Security: HMAC-signed expiring links in the URL fragment; 30-day device tokens; loopback by default; Manual-mode input never stored, logged or shown to the model.
 - Tools: navigate, reload, state, snapshot, find, read, diff, screenshot, console_errors, act, fill, scroll, network_requests, fetch_with_session, tabs_list, tabs_open, tabs_select, tabs_close, live_start, live_mode, live_stop, ask_approval, inbox.
 
+Blog
+- How Ridealong streams a real Chrome to your phone in H.264 (EN): https://williamblaismedia-create.github.io/ridealong/blog/streaming-chrome-h264-to-your-phone/ — CDP screencast into ffmpeg (NVENC / VideoToolbox / libx264), fragmented MP4 in 100 ms pieces over a websocket, MSE in the browser, 4 s watchdog with JPEG fallback, 30 s pings for Cloudflare, HMAC tokens in the URL fragment, 30-day device tokens, owner/follower slot.
+- Comment Ridealong diffuse un vrai Chrome vers ton téléphone en H.264 (FR): https://williamblaismedia-create.github.io/ridealong/fr/blog/streaming-chrome-h264-vers-ton-telephone/
+
 Links
 - Repository: https://github.com/williamblaismedia-create/ridealong
 - README (EN): https://github.com/williamblaismedia-create/ridealong/blob/main/README.md
